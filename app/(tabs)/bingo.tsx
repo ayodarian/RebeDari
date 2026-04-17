@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
   palomita: { position: 'absolute', top: 2, right: 2, backgroundColor: 'rgba(144, 238, 144, 0.8)', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   palomitaTexto: { fontSize: 14, fontWeight: 'bold', color: '#228B22' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: 'rgba(255, 255, 255, 0.85)', borderRadius: 20, padding: 20, width: width - 40, maxHeight: '80%', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.3)' },
+  modalContent: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, width: width - 40, maxHeight: '80%' },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#FF6B9D', marginBottom: 20, textAlign: 'center' },
   labelInput: { fontSize: 14, fontWeight: '600', color: '#666666', marginBottom: 5, marginTop: 10 },
   input: { backgroundColor: '#F5F5F5', borderRadius: 10, padding: 12, fontSize: 16, color: '#333333' },
