@@ -33,6 +33,20 @@ export default function BingoScreen() {
   
   const [tituloInput, setTituloInput] = useState('');
   const [descripcionInput, setDescripcionInput] = useState('');
+  const [filtroActual, setFiltroActual] = useState<'todos' | 'completados' | 'pendientes'>('todos');
+
+  const getCasillasFiltradas = () => {
+    switch (filtroActual) {
+      case 'completados':
+        return casillas.filter(c => c.realizada);
+      case 'pendientes':
+        return casillas.filter(c => !c.realizada);
+      default:
+        return casillas;
+    }
+  };
+
+  const casillasFiltradas = getCasillasFiltradas();
 
   const reindexarCasillas = (lista: Casilla[]): Casilla[] => {
     return lista.map((casilla, index) => ({
@@ -144,12 +158,40 @@ export default function BingoScreen() {
     return resultado;
   };
 
-  const filas = chunkArray(casillas, 5);
+  const filas = chunkArray(casillasFiltradas, 5);
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Bingo</Text>
+      </View>
+
+      {/* Filtros tipo tabs */}
+      <View style={styles.filtrosContainer}>
+        <Pressable
+          style={[styles.botonFiltro, filtroActual === 'todos' && styles.botonFiltroActivo]}
+          onPress={() => setFiltroActual('todos')}
+        >
+          <Text style={[styles.botonFiltroTexto, filtroActual === 'todos' && styles.botonFiltroTextoActivo]}>
+            Todos
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.botonFiltro, filtroActual === 'completados' && styles.botonFiltroActivo]}
+          onPress={() => setFiltroActual('completados')}
+        >
+          <Text style={[styles.botonFiltroTexto, filtroActual === 'completados' && styles.botonFiltroTextoActivo]}>
+            Completados
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.botonFiltro, filtroActual === 'pendientes' && styles.botonFiltroActivo]}
+          onPress={() => setFiltroActual('pendientes')}
+        >
+          <Text style={[styles.botonFiltroTexto, filtroActual === 'pendientes' && styles.botonFiltroTextoActivo]}>
+            Pendientes
+          </Text>
+        </Pressable>
       </View>
 
       <View style={styles.botonesContainer}>
@@ -235,6 +277,15 @@ export default function BingoScreen() {
               )}
             </View>
 
+            {editando && (
+              <Pressable
+                style={styles.botonGuardar}
+                onPress={guardarCambios}
+              >
+                <Text style={styles.botonGuardarTexto}>Guardar cambios</Text>
+              </Pressable>
+            )}
+
             <Pressable
               style={styles.botonCerrar}
               onPress={cerrarModal}
@@ -249,7 +300,7 @@ export default function BingoScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: 'rgba(255, 245, 248, 0.95)' },
   header: { paddingTop: 50, paddingBottom: 10, paddingHorizontal: 15 },
   title: { fontSize: 24, fontWeight: 'bold', color: '#FF6B9D' },
   botonesContainer: { flexDirection: 'row', paddingHorizontal: 15, marginBottom: 10, gap: 10 },
@@ -272,7 +323,7 @@ const styles = StyleSheet.create({
   palomita: { position: 'absolute', top: 2, right: 2, backgroundColor: 'rgba(144, 238, 144, 0.8)', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   palomitaTexto: { fontSize: 14, fontWeight: 'bold', color: '#228B22' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, width: width - 40, maxHeight: '80%' },
+  modalContent: { backgroundColor: 'rgba(255, 255, 255, 0.85)', borderRadius: 20, padding: 20, width: width - 40, maxHeight: '80%', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.3)' },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#FF6B9D', marginBottom: 20, textAlign: 'center' },
   labelInput: { fontSize: 14, fontWeight: '600', color: '#666666', marginBottom: 5, marginTop: 10 },
   input: { backgroundColor: '#F5F5F5', borderRadius: 10, padding: 12, fontSize: 16, color: '#333333' },
@@ -285,4 +336,15 @@ const styles = StyleSheet.create({
   botonModalTexto: { fontSize: 14, fontWeight: '600', color: '#333333' },
   botonCerrar: { marginTop: 15, paddingVertical: 12, alignItems: 'center' },
   botonCerrarTexto: { fontSize: 14, color: '#FF6B9D', fontWeight: '600' },
+  
+  // Estilos para filtros tipo tabs
+  filtrosContainer: { flexDirection: 'row', paddingHorizontal: 15, marginBottom: 15, gap: 8 },
+  botonFiltro: { flex: 1, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 15, backgroundColor: 'rgba(255, 182, 193, 0.3)', alignItems: 'center' },
+  botonFiltroActivo: { backgroundColor: 'rgba(255, 107, 157, 0.6)' },
+  botonFiltroTexto: { fontSize: 12, fontWeight: '600', color: '#666666' },
+  botonFiltroTextoActivo: { color: '#FFFFFF', fontWeight: 'bold' },
+  
+  // Estilos para botón guardar
+  botonGuardar: { marginTop: 15, paddingVertical: 14, borderRadius: 10, backgroundColor: '#FF6B9D', alignItems: 'center' },
+  botonGuardarTexto: { fontSize: 16, fontWeight: 'bold', color: '#FFFFFF' },
 });
