@@ -71,7 +71,7 @@ export default function ReelsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   header: {
     paddingTop: 50,
