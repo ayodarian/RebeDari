@@ -1,6 +1,7 @@
-import { View, Text, StyleSheet, Pressable, Modal, TextInput, Alert, ScrollView, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { useState } from 'react';
 import { Dimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 const TAMANO_CASILLA = (width - 80) / 5;
@@ -34,6 +35,7 @@ export default function BingoScreen() {
   const [tituloInput, setTituloInput] = useState('');
   const [descripcionInput, setDescripcionInput] = useState('');
   const [filtroActual, setFiltroActual] = useState<'todos' | 'completados' | 'pendientes'>('todos');
+  const insets = useSafeAreaInsets();
 
   const getCasillasFiltradas = () => {
     switch (filtroActual) {
@@ -161,7 +163,7 @@ export default function BingoScreen() {
   const filas = chunkArray(casillasFiltradas, 5);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top > 0 ? insets.top + 15 : 65 }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Bingo</Text>
       </View>
@@ -295,7 +297,7 @@ export default function BingoScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
