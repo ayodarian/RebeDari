@@ -1,0 +1,157 @@
+import { View, Text, StyleSheet, FlatList, Dimensions } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+
+const { width, height } = Dimensions.get('window');
+
+interface Video {
+  id: string;
+  url: string;
+  caption: string;
+  created_at: string;
+}
+
+export default function ReelsScreen() {
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    setVideos([
+      { id: '1', url: '', caption: 'Videos de ustedes', created_at: new Date().toISOString() },
+      { id: '2', url: '', caption: 'Más videos', created_at: new Date().toISOString() },
+    ]);
+  }, []);
+
+  const renderVideo = ({ item, index }: { item: Video; index: number }) => (
+    <View style={styles.videoContainer}>
+      <View style={styles.videoPlaceholder}>
+        <Text style={styles.placeholderText}>🎬</Text>
+        <Text style={styles.placeholderSubtext}>Video {index + 1}</Text>
+      </View>
+      <View style={styles.videoOverlay}>
+        <Text style={styles.caption}>{item.caption}</Text>
+      </View>
+      <View style={styles.videoActions}>
+        <Text style={styles.actionIcon}>❤️</Text>
+        <Text style={styles.actionLabel}>Like</Text>
+        <Text style={styles.actionIcon}>💬</Text>
+        <Text style={styles.actionLabel}>Comentar</Text>
+        <Text style={styles.actionIcon}>📤</Text>
+        <Text style={styles.actionLabel}>Compartir</Text>
+      </View>
+    </View>
+  );
+
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 50,
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Reels</Text>
+      </View>
+      <FlatList
+        data={videos}
+        renderItem={renderVideo}
+        keyExtractor={(item) => item.id}
+        pagingEnabled
+        showsVerticalScrollIndicator={false}
+        snapToInterval={height * 0.7}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        onViewableItemsChanged={({ viewableItems }: any) => {
+          if (viewableItems.length > 0) {
+            setCurrentIndex(viewableItems[0].index);
+          }
+        }}
+        viewabilityConfig={viewabilityConfig}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>Sin videos todavía</Text>
+            <Text style={styles.emptySubtext}>Subí el primer video</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  header: {
+    paddingTop: 60,
+    paddingBottom: 15,
+    paddingHorizontal: 15,
+    backgroundColor: '#000000',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  videoContainer: {
+    width: width,
+    height: height * 0.65,
+    justifyContent: 'center',
+  },
+  videoPlaceholder: {
+    width: width,
+    height: height * 0.55,
+    backgroundColor: '#1A1A1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderText: {
+    fontSize: 60,
+    opacity: 0.3,
+  },
+  placeholderSubtext: {
+    fontSize: 14,
+    color: '#8E8E93',
+    marginTop: 10,
+  },
+  videoOverlay: {
+    position: 'absolute',
+    bottom: 80,
+    left: 15,
+    right: 100,
+  },
+  caption: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '500',
+  },
+  videoActions: {
+    position: 'absolute',
+    right: 10,
+    bottom: 100,
+    alignItems: 'center',
+  },
+  actionIcon: {
+    fontSize: 28,
+    marginBottom: 5,
+  },
+  actionLabel: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    marginBottom: 15,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 100,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#8E8E93',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#8E8E93',
+    marginTop: 5,
+  },
+});
