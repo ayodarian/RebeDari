@@ -1,89 +1,92 @@
-import { View, Text, StyleSheet, FlatList, TextInput, Pressable, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
-import { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, SafeAreaView } from 'react-native';
+import { useState } from 'react';
 
-const { height } = Dimensions.get('window');
-
-interface Carta {
+interface DocumentoCarta {
   id: string;
-  contenido: string;
-  autor: string;
-  created_at: string;
+  titulo: string;
+  remitente: string;
+  fecha: string;
 }
 
+const documentosLebebe: DocumentoCarta[] = [
+  { id: '1', titulo: 'Carta de Aniversario', remitente: 'De Darian para Rebeca', fecha: '12 Dic 2025' },
+  { id: '2', titulo: 'Mi Primer Amor', remitente: 'De Darian para Rebeca', fecha: '14 Feb 2025' },
+  { id: '3', titulo: 'Te Extraño', remitente: 'De Rebeca para Darian', fecha: '5 Mar 2026' },
+  { id: '4', titulo: 'Carta de San Valentín', remitente: 'De Darian para Rebeca', fecha: '14 Feb 2026' },
+];
+
+const documentosDarian: DocumentoCarta[] = [
+  { id: '1', titulo: 'Carta de Cumpleaños', remitente: 'De Rebeca para Darian', fecha: '15 Jun 2025' },
+  { id: '2', titulo: 'Mensaje Especial', remitente: 'De Rebeca para Darian', fecha: '20 Jul 2025' },
+  { id: '3', titulo: 'Te Amo', remitente: 'De Rebeca para Darian', fecha: '10 Oct 2025' },
+];
+
 export default function CartasScreen() {
-  const [cartas, setCartas] = useState<Carta[]>([]);
-  const [nuevaCarta, setNuevaCarta] = useState('');
+  const [pestanaActiva, setPestanaActiva] = useState<'Lebebe' | 'Darian'>('Lebebe');
 
-  useEffect(() => {
-    setCartas([
-      { id: '1', contenido: 'Hola mi amor, te quiero mucho!', autor: 'Tu', created_at: new Date().toISOString() },
-      { id: '2', contenido: 'Yo también te amo ❤️', autor: 'Ella', created_at: new Date().toISOString() },
-    ]);
-  }, []);
+  const documentos = pestanaActiva === 'Lebebe' ? documentosLebebe : documentosDarian;
 
-  const enviarCarta = () => {
-    if (nuevaCarta.trim()) {
-      const carta: Carta = {
-        id: Date.now().toString(),
-        contenido: nuevaCarta,
-        autor: 'Tu',
-        created_at: new Date().toISOString(),
-      };
-      setCartas([carta, ...cartas]);
-      setNuevaCarta('');
-    }
+  const abrirDocumento = (documento: DocumentoCarta) => {
+    console.log('Abrir documento:', documento.titulo);
   };
 
-  const renderCarta = ({ item }: { item: Carta }) => (
-    <View style={styles.cartaContainer}>
-      <View style={styles.cartaBubble}>
-        <Text style={styles.cartaContenido}>{item.contenido}</Text>
-        <View style={styles.cartaFooter}>
-          <Text style={styles.cartaAutor}>{item.autor}</Text>
-          <Text style={styles.cartaHora}>
-            {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-        </View>
+  const renderTarjeta = (documento: DocumentoCarta) => (
+    <Pressable
+      key={documento.id}
+      style={styles.tarjeta}
+      onPress={() => abrirDocumento(documento)}
+    >
+      <Image
+        source={require('../../assets/icon-carta.png')}
+        style={styles.tarjetaIcono}
+      />
+      <View style={styles.tarjetaContent}>
+        <Text style={styles.tarjetaTitulo}>{documento.titulo}</Text>
+        <Text style={styles.tarjetaSubtitulo}>
+          {documento.remitente} • {documento.fecha}
+        </Text>
       </View>
-    </View>
+    </Pressable>
   );
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Cartas</Text>
       </View>
-      <FlatList
-        data={cartas}
-        renderItem={renderCarta}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        style={styles.lista}
-        contentContainerStyle={styles.listaContent}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Sin cartas todavía</Text>
-            <Text style={styles.emptySubtext}>Escribí la primera carta</Text>
-          </View>
-        }
-      />
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Escribe una carta de amor..."
-          placeholderTextColor="#8E8E93"
-          value={nuevaCarta}
-          onChangeText={setNuevaCarta}
-          multiline
-        />
-        <Pressable style={styles.enviarButton} onPress={enviarCarta}>
-          <Text style={styles.enviarText}>💌</Text>
+      
+      <View style={styles.pestanasContainer}>
+        <Pressable
+          style={[styles.pestana, pestanaActiva === 'Lebebe' && styles.pestanaActivaLebebe]}
+          onPress={() => setPestanaActiva('Lebebe')}
+        >
+          <Text style={[styles.pestanaTexto, pestanaActiva === 'Lebebe' && styles.pestanaTextoActivo]}>
+            Lebebe
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.pestana, pestanaActiva === 'Darian' && styles.pestanaActivaDarian]}
+          onPress={() => setPestanaActiva('Darian')}
+        >
+          <Text style={[styles.pestanaTexto, pestanaActiva === 'Darian' && styles.pestanaTextoActivo]}>
+            Darianzin
+          </Text>
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+
+      <ScrollView
+        style={styles.lista}
+        contentContainerStyle={styles.listaContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {documentos.map(renderTarjeta)}
+        {documentos.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>Sin documentos todavía</Text>
+          </View>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -94,7 +97,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingTop: 50,
-    paddingBottom: 15,
+    paddingBottom: 10,
     paddingHorizontal: 15,
   },
   title: {
@@ -102,82 +105,77 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FF6B9D',
   },
+  pestanasContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 15,
+    marginBottom: 15,
+    gap: 10,
+  },
+  pestana: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
+  },
+  pestanaActivaLebebe: {
+    backgroundColor: '#FFB6C1',
+  },
+  pestanaActivaDarian: {
+    backgroundColor: '#98FB98',
+  },
+  pestanaTexto: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666666',
+  },
+  pestanaTextoActivo: {
+    color: '#FFFFFF',
+  },
   lista: {
     flex: 1,
   },
   listaContent: {
     paddingHorizontal: 15,
+    paddingBottom: 20,
   },
-  cartaContainer: {
-    marginBottom: 15,
-    alignItems: 'flex-start',
-  },
-  cartaBubble: {
-    maxWidth: '80%',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 18,
-    padding: 15,
-  },
-  cartaContenido: {
-    fontSize: 16,
-    color: '#000000',
-  },
-  cartaFooter: {
+  tarjeta: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  cartaAutor: {
-    fontSize: 12,
-    color: '#FF6B9D',
+  tarjetaIcono: {
+    width: 40,
+    height: 40,
+    marginRight: 12,
+  },
+  tarjetaContent: {
+    flex: 1,
+  },
+  tarjetaTitulo: {
+    fontSize: 16,
     fontWeight: '600',
+    color: '#000000',
+    marginBottom: 4,
   },
-  cartaHora: {
+  tarjetaSubtitulo: {
     fontSize: 12,
     color: '#8E8E93',
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 100,
+    paddingTop: 50,
   },
   emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#8E8E93',
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#8E8E93',
-    marginTop: 5,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    padding: 15,
-    backgroundColor: 'transparent',
-    alignItems: 'flex-end',
-  },
-  input: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
     fontSize: 16,
-    maxHeight: 100,
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-  },
-  enviarButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FF6B9D',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  enviarText: {
-    fontSize: 20,
+    color: '#8E8E93',
   },
 });

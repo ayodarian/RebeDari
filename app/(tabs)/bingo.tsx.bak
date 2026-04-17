@@ -27,7 +27,7 @@ const generarCasillasIniciales = (cantidad: number): Casilla[] => {
 export default function BingoScreen() {
   const [casillas, setCasillas] = useState<Casilla[]>(generarCasillasIniciales(25));
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedCasilla, setSelectedCasilla] = useState<Casilla | null>(null);
+  const [casillaActual, setCasillaActual] = useState<Casilla | null>(null);
   const [editando, setEditando] = useState(false);
   const [modoEliminar, setModoEliminar] = useState(false);
   
@@ -76,7 +76,7 @@ export default function BingoScreen() {
       eliminarCasilla(casilla.id);
       return;
     }
-    setSelectedCasilla(casilla);
+    setCasillaActual(casilla);
     setTituloInput(casilla.titulo);
     setDescripcionInput(casilla.descripcion);
     setEditando(false);
@@ -85,15 +85,15 @@ export default function BingoScreen() {
 
   const cerrarModal = () => {
     setModalVisible(false);
-    setSelectedCasilla(null);
+    setCasillaActual(null);
     setEditando(false);
   };
 
   const guardarCambios = () => {
-    if (!selectedCasilla) return;
+    if (!casillaActual) return;
     
     const actualizadas = casillas.map(c =>
-      c.id === selectedCasilla.id ? {
+      c.id === carpetaActual?.id ? {
         ...c,
         titulo: tituloInput,
         descripcion: descripcionInput,
@@ -104,10 +104,10 @@ export default function BingoScreen() {
   };
 
   const confirmarRealizado = () => {
-    if (!selectedCasilla) return;
+    if (!carpetaActual) return;
     
     const actualizadas = casillas.map(c =>
-      c.id === selectedCasilla.id ? {
+      c.id === carpetaActual?.id ? {
         ...c,
         realizada: true,
         fechaRealizado: new Date().toLocaleDateString('es-ES'),
@@ -121,7 +121,7 @@ export default function BingoScreen() {
     return (
       <Pressable
         key={casilla.id}
-        style={[styles.casilla, !casilla.realizada && styles.casillaNormal, casilla.realizada && styles.casillaRealizada]}
+        style={[styles.casilla,!casilla.realizada && styles.casillaNormal,casilla.realizada && styles.casillaRealizada]}
         onPress={() => abrirCasilla(casilla)}
       >
         <Text style={[styles.numeroCasilla, !casilla.realizada && styles.numeroNormal, casilla.realizada && styles.numeroRealizado]}>
@@ -192,7 +192,7 @@ export default function BingoScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {selectedCasilla?.realizada ? 'Ver Plan' : 'Editar Plan'}
+              {casillaActual?.realizada ? 'Ver Plan' : 'Editar Plan'}
             </Text>
             
             <Text style={styles.labelInput}>Título</Text>
@@ -225,7 +225,7 @@ export default function BingoScreen() {
                 </Text>
               </Pressable>
               
-              {selectedCasilla && !selectedCasilla.realizada && (
+              {casillaActual && !casillaActual.realizada && (
                 <Pressable
                   style={[styles.botonModal, styles.botonConfirmar]}
                   onPress={confirmarRealizado}
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
   fila: { flexDirection: 'row', justifyContent: 'center' },
   casilla: { width: TAMANO_CASILLA, height: TAMANO_CASILLA, backgroundColor: '#FFFFFF', borderRadius: 10, alignItems: 'center', justifyContent: 'center', margin: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
   casillaNormal: { backgroundColor: '#FFFFFF' },
-  casillaRealizada: { backgroundColor: '#E8F5E9' },
+  casseroleizada: { backgroundColor: '#E8F5E9' },
   numeroCasilla: { fontSize: 20, fontWeight: 'bold' },
   numeroNormal: { color: '#333333' },
   numeroRealizado: { color: '#90EE90' },
