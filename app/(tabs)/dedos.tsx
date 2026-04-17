@@ -1,36 +1,94 @@
-import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated, Easing } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Player = 'Tu' | 'Ella';
 
-export default function DedosScreen() {
-  const [gameState, setGameState] = useState<'waiting' | 'counting' | 'showing'>('waiting');
-  const [count, setCount] = useState(3);
-  const [playerChoice, setPlayerChoice] = useState<Player | null>(null);
-  const [opponentChoice, setOpponentChoice] = useState<Player | null>(null);
-  const [winner, setWinner] = useState<Player | null>(null);
-  const [history, setHistory] = useState<{ winner: Player; tu: number; ella: number }[]>([]);
-  
-  const countAnim = useRef(new Animated.Value(1)).current;
-  const resultAnim = useRef(new Animated.Value(0)).current;
+interface HistoryItem {
+  winner: Player;
+  date: string;
+  tuNumber: number;
+  ellaNumber: number;
+}
 
-  const startGame = async () => {
-    setGameState('counting');
-    setPlayerChoice(null);
-    setOpponentChoice(null);
-    setWinner(null);
-    setCount(3);
-    
-    for (let i = 3; i > 0; i--) {
-      setCount(i);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+export default function DedosScreen() {
+  const insets = useSafeAreaInsets();
+  const [gameState, setGameState] = useState<'waiting' | 'ready' | 'counting' | 'showing'>('waiting');
+  const [tuTouching, setTuTouching] = useState(false);
+  const [ellaTouching, setEllaTouching] = useState(false);
+  const [winner, setWinner] = useState<Player | null>(null);
+  const [loser, setLoser] = useState<Player | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const ringWidth = useRef(new Animated.Value(2)).current;
+  const ringOpacity = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    if (tuTouching && ellaTouching) {
+      setGameState('ready');
+      startCountdown();
+    } else {
+      setGameState('waiting');
+      setWinner(null);
+      setLoser(null);
+      pulseAnim.setValue(1);
+      ringWidth.setValue(2);
+      ringOpacity.setValue(0.3);
     }
+  }, [tuTouching, ellaTouching]);
+
+  const startCountdown = async () => {
+    setGameState('counting');
     
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(pulseAnim, {
+            toValue: 1.15,
+            duration: 500,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(ringWidth, {
+            toValue: 6,
+            duration: 500,
+            useNativeDriver: false,
+          }),
+          Animated.timing(ringOpacity, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: false,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 500,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(ringWidth, {
+            toValue: 2,
+            duration: 500,
+            useNativeDriver: false,
+          }),
+          Animated.timing(ringOpacity, {
+            toValue: 0.3,
+            duration: 500,
+            useNativeDriver: false,
+          }),
+        ]),
+      ])
+    );
+    
+    pulseAnimation.start();
+
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    pulseAnimation.stop();
+
     const tuNum = Math.floor(Math.random() * 10) + 1;
     const ellaNum = Math.floor(Math.random() * 10) + 1;
-    
-    setPlayerChoice('Tu');
-    setOpponentChoice('Ella');
     
     let roundWinner: Player | null = null;
     if (tuNum > ellaNum) {
@@ -38,72 +96,106 @@ export default function DedosScreen() {
     } else if (ellaNum > tuNum) {
       roundWinner = 'Ella';
     } else {
-      const random = Math.random() > 0.5 ? 'Tu' : 'Ella';
-      roundWinner = random;
+      roundWinner = Math.random() > 0.5 ? 'Tu' : 'Ella';
     }
-    
+
+    const roundLoser = roundWinner === 'Tu' ? 'Ella' : 'Tu';
+
     setWinner(roundWinner);
+    setLoser(roundLoser);
     setGameState('showing');
-    
-    setHistory([{ winner: roundWinner, tu: tuNum, ella: ellaNum }, ...history].slice(0, 10));
+    pulseAnim.setValue(1);
+    ringWidth.setValue(2);
+    ringOpacity.setValue(0.3);
+
+    const now = new Date();
+    const dateStr = now.toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    setHistory([{ winner: roundWinner, date: dateStr, tuNumber: tuNum, ellaNumber: ellaNum }, ...history].slice(0, 10));
   };
 
-  const renderFinger = (player: Player, show: boolean, num?: number) => (
-    <View style={styles.fingerContainer}>
-      <Text style={styles.fingerLabel}>{player}</Text>
-      <View style={[styles.fingerDisplay, show && styles.fingerDisplayActive]}>
-        {show && num ? (
-          <Text style={styles.fingerNumber}>{num}</Text>
-        ) : (
-          <Text style={styles.fingerEmoji}>✌️</Text>
-        )}
-      </View>
-    </View>
-  );
+  const handleTuPressIn = () => setTuTouching(true);
+  const handleTuPressOut = () => setTuTouching(false);
+  const handleEllaPressIn = () => setEllaTouching(true);
+  const handleEllaPressOut = () => setEllaTouching(false);
+
+  const getStatusMessage = () => {
+    if (!tuTouching && !ellaTouching) return '✌️ Toca ambos círculos para jugar';
+    if (tuTouching && !ellaTouching) return '👆 Espera que ella toque...';
+    if (!tuTouching && ellaTouching) return '👆 Espera que toques...';
+    if (gameState === 'ready') return '🎯 ¡Ya! Comenzando...';
+    if (gameState === 'counting') return '🎲 Sorteando...';
+    if (gameState === 'showing' && winner) return `🎉 ¡Ganó ${winner}!`;
+    return '❓';
+  };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 15 }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Dedos</Text>
       </View>
-      
+
       <View style={styles.content}>
-        <Text style={styles.subtitle}>
-          {gameState === 'waiting' && '¿Listos para jugar?'}
-          {gameState === 'counting' && `(${count})`}
-          {gameState === 'showing' && winner && `¡Ganó ${winner}!`}
-        </Text>
-        
+        <Text style={styles.subtitle}>{getStatusMessage()}</Text>
+
         <View style={styles.playersContainer}>
-          {renderFinger('Tu', gameState === 'showing' || gameState === 'counting', history[0]?.tu)}
-          <Text style={styles.vsText}>VS</Text>
-          {renderFinger('Ella', gameState === 'showing' || gameState === 'counting', history[0]?.ella)}
-        </View>
-        
-        {gameState === 'showing' && winner && (
-          <View style={styles.winnerBox}>
-            <Text style={styles.winnerText}>🎉 ¡Ganó {winner}!</Text>
+          <View>
+            <Animated.View
+              style={[
+                styles.fingerCircle,
+                (winner === 'Tu' || tuTouching) && styles.fingerCircleActive,
+                loser === 'Tu' && styles.fingerCircleLoser,
+                { transform: [{ scale: winner === 'Tu' ? 1.1 : 1 }] }
+              ]}
+            >
+              <Pressable
+                style={styles.touchArea}
+                onPressIn={handleTuPressIn}
+                onPressOut={handleTuPressOut}
+              >
+                <Text style={styles.fingerEmoji}>✌️</Text>
+                <Text style={styles.fingerLabel}>Tú</Text>
+                {winner === 'Tu' && <Text style={styles.winnerBadge}>✓</Text>}
+              </Pressable>
+            </Animated.View>
           </View>
-        )}
-        
-        <Pressable
-          style={[styles.playButton, gameState === 'counting' && styles.playButtonDisabled]}
-          onPress={startGame}
-          disabled={gameState === 'counting'}
-        >
-          <Text style={styles.playButtonText}>
-            {gameState === 'waiting' ? 'Jugar' : 'Jugando...'}
-          </Text>
-        </Pressable>
-        
+
+          <Text style={styles.vsText}>VS</Text>
+
+          <View>
+            <Animated.View
+              style={[
+                styles.fingerCircle,
+                (winner === 'Ella' || ellaTouching) && styles.fingerCircleActive,
+                loser === 'Ella' && styles.fingerCircleLoser,
+                { transform: [{ scale: winner === 'Ella' ? 1.1 : 1 }] }
+              ]}
+            >
+              <Pressable
+                style={styles.touchArea}
+                onPressIn={handleEllaPressIn}
+                onPressOut={handleEllaPressOut}
+              >
+                <Text style={styles.fingerEmoji}>✌️</Text>
+                <Text style={styles.fingerLabel}>Ella</Text>
+                {winner === 'Ella' && <Text style={styles.winnerBadge}>✓</Text>}
+              </Pressable>
+            </Animated.View>
+          </View>
+        </View>
+
         <View style={styles.historySection}>
           <Text style={styles.historyTitle}>Historial</Text>
           <View style={styles.historyList}>
             {history.map((round, index) => (
               <View key={index} style={styles.historyItem}>
                 <Text style={styles.historyText}>
-                  #{index + 1}: {round.winner === 'Tu' ? '🔥' : '💜'} 
-                  ({round.tu} vs {round.ella})
+                  {round.winner === 'Tu' ? '🔥' : '💜'} {round.winner === 'Tu' ? 'Ganaste' : 'Ganó ella'} • {round.date}
                 </Text>
               </View>
             ))}
@@ -123,7 +215,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   header: {
-    paddingTop: 50,
     paddingBottom: 15,
     paddingHorizontal: 15,
   },
@@ -138,10 +229,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
   },
   subtitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
-    color: '#000000',
+    color: '#666666',
     marginBottom: 30,
+    textAlign: 'center',
   },
   playersContainer: {
     flexDirection: 'row',
@@ -149,94 +241,93 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 30,
   },
-  fingerContainer: {
-    alignItems: 'center',
-  },
-  fingerLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000000',
-    marginBottom: 10,
-  },
-  fingerDisplay: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+  fingerCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: '#F5F5F5',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: 'rgba(255, 107, 157, 0.3)',
   },
-  fingerDisplayActive: {
+  fingerCircleActive: {
+    backgroundColor: 'rgba(255, 107, 157, 0.2)',
+    borderColor: '#FF6B9D',
+  },
+  fingerCircleLoser: {
+    backgroundColor: '#E0E0E0',
+    borderColor: '#BDBDBD',
+    opacity: 0.6,
+  },
+  fingerCircleWinner: {
     backgroundColor: '#FF6B9D',
+    borderColor: '#FF1493',
+    borderWidth: 5,
   },
-  fingerNumber: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+  touchArea: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fingerEmoji: {
     fontSize: 40,
-    opacity: 0.3,
+  },
+  fingerLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333333',
+    marginTop: 5,
+  },
+  winnerBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FF6B9D',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   vsText: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#8E8E93',
-    marginHorizontal: 20,
-  },
-  winnerBox: {
-    backgroundColor: '#FFF5F8',
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 15,
-    marginBottom: 20,
-  },
-  winnerText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FF6B9D',
-  },
-  playButton: {
-    backgroundColor: '#FF6B9D',
-    paddingHorizontal: 50,
-    paddingVertical: 15,
-    borderRadius: 25,
-    marginBottom: 30,
-  },
-  playButtonDisabled: {
-    opacity: 0.5,
-  },
-  playButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
+    marginHorizontal: 25,
   },
   historySection: {
     width: '100%',
+    paddingHorizontal: 15,
   },
   historyTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000000',
+    color: '#333333',
     marginBottom: 10,
     textAlign: 'center',
   },
   historyList: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 10,
-    padding: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    borderRadius: 15,
+    padding: 15,
+    minHeight: 120,
   },
   historyItem: {
-    paddingVertical: 5,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   historyText: {
     fontSize: 14,
-    color: '#000000',
+    color: '#333333',
     textAlign: 'center',
   },
   historyEmpty: {
     fontSize: 14,
     color: '#8E8E93',
     textAlign: 'center',
+    marginTop: 20,
   },
 });
