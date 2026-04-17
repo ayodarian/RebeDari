@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, Pressable, Animated, Easing } from 'react-native';
-import { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Animated, Easing, PanResponder } from 'react-native';
+import { useState, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Player = 'Tu' | 'Ella';
@@ -13,122 +13,133 @@ interface HistoryItem {
 
 export default function DedosScreen() {
   const insets = useSafeAreaInsets();
-  const [gameState, setGameState] = useState<'waiting' | 'ready' | 'counting' | 'showing'>('waiting');
+  const [gameState, setGameState] = useState<'waiting' | 'counting' | 'showing'>('waiting');
   const [tuTouching, setTuTouching] = useState(false);
   const [ellaTouching, setEllaTouching] = useState(false);
   const [winner, setWinner] = useState<Player | null>(null);
   const [loser, setLoser] = useState<Player | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const ringWidth = useRef(new Animated.Value(2)).current;
-  const ringOpacity = useRef(new Animated.Value(0.3)).current;
+  const pulseAnim = useRef(new Animated.Value(1));
+  const timerRef = useRef<any>(null);
+  const animationRef = useRef<any>(null);
 
-  useEffect(() => {
-    if (tuTouching && ellaTouching) {
-      setGameState('ready');
-      startCountdown();
-    } else {
-      setGameState('waiting');
-      setWinner(null);
-      setLoser(null);
-      pulseAnim.setValue(1);
-      ringWidth.setValue(2);
-      ringOpacity.setValue(0.3);
-    }
-  }, [tuTouching, ellaTouching]);
+  const tuPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        setTuTouching(true);
+      },
+      onPanResponderRelease: () => {
+        setTuTouching(false);
+      },
+      onPanResponderTerminate: () => {
+        setTuTouching(false);
+      },
+    })
+  ).current;
 
-  const startCountdown = async () => {
-    setGameState('counting');
+  const ellaPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        setEllaTouching(true);
+      },
+      onPanResponderRelease: () => {
+        setEllaTouching(false);
+      },
+      onPanResponderTerminate: () => {
+        setEllaTouching(false);
+      },
+    })
+  ).current;
+
+  const startCountdown = () => {
+    if (gameState !== 'waiting') return;
     
-    const pulseAnimation = Animated.loop(
+    setGameState('counting');
+
+    animationRef.current = Animated.loop(
       Animated.sequence([
-        Animated.parallel([
-          Animated.timing(pulseAnim, {
-            toValue: 1.15,
-            duration: 500,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(ringWidth, {
-            toValue: 6,
-            duration: 500,
-            useNativeDriver: false,
-          }),
-          Animated.timing(ringOpacity, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: false,
-          }),
-        ]),
-        Animated.parallel([
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 500,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(ringWidth, {
-            toValue: 2,
-            duration: 500,
-            useNativeDriver: false,
-          }),
-          Animated.timing(ringOpacity, {
-            toValue: 0.3,
-            duration: 500,
-            useNativeDriver: false,
-          }),
-        ]),
+        Animated.timing(pulseAnim.current, {
+          toValue: 1.15,
+          duration: 400,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim.current, {
+          toValue: 1,
+          duration: 400,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
       ])
     );
-    
-    pulseAnimation.start();
+    animationRef.current.start();
 
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    pulseAnimation.stop();
+    timerRef.current = setTimeout(() => {
+      if (animationRef.current) {
+        animationRef.current.stop();
+      }
+      
+      const tuNum = Math.floor(Math.random() * 10) + 1;
+      const ellaNum = Math.floor(Math.random() * 10) + 1;
+      
+      let roundWinner: Player = 'Tu';
+      if (ellaNum > tuNum) {
+        roundWinner = 'Ella';
+      } else if (ellaNum === tuNum) {
+        roundWinner = Math.random() > 0.5 ? 'Tu' : 'Ella';
+      }
 
-    const tuNum = Math.floor(Math.random() * 10) + 1;
-    const ellaNum = Math.floor(Math.random() * 10) + 1;
-    
-    let roundWinner: Player | null = null;
-    if (tuNum > ellaNum) {
-      roundWinner = 'Tu';
-    } else if (ellaNum > tuNum) {
-      roundWinner = 'Ella';
-    } else {
-      roundWinner = Math.random() > 0.5 ? 'Tu' : 'Ella';
-    }
+      const roundLoser = roundWinner === 'Tu' ? 'Ella' : 'Tu';
 
-    const roundLoser = roundWinner === 'Tu' ? 'Ella' : 'Tu';
+      setWinner(roundWinner);
+      setLoser(roundLoser);
+      setGameState('showing');
+      pulseAnim.current.setValue(1);
 
-    setWinner(roundWinner);
-    setLoser(roundLoser);
-    setGameState('showing');
-    pulseAnim.setValue(1);
-    ringWidth.setValue(2);
-    ringOpacity.setValue(0.3);
+      const now = new Date();
+      const dateStr = now.toLocaleString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
 
-    const now = new Date();
-    const dateStr = now.toLocaleString('es-ES', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    setHistory([{ winner: roundWinner, date: dateStr, tuNumber: tuNum, ellaNumber: ellaNum }, ...history].slice(0, 10));
+      setHistory([{ winner: roundWinner, date: dateStr, tuNumber: tuNum, ellaNumber: ellaNum }, ...history].slice(0, 10));
+    }, 3000);
   };
 
-  const handleTuPressIn = () => setTuTouching(true);
-  const handleTuPressOut = () => setTuTouching(false);
-  const handleEllaPressIn = () => setEllaTouching(true);
-  const handleEllaPressOut = () => setEllaTouching(false);
+  const resetGame = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (animationRef.current) {
+      animationRef.current.stop();
+    }
+    setGameState('waiting');
+    setWinner(null);
+    setLoser(null);
+    pulseAnim.current.setValue(1);
+  };
+
+  // Check touch states
+  if (tuTouching && ellaTouching && gameState === 'waiting') {
+    startCountdown();
+  }
+
+  if ((!tuTouching || !ellaTouching) && gameState === 'counting') {
+    resetGame();
+  }
 
   const getStatusMessage = () => {
     if (!tuTouching && !ellaTouching) return '✌️ Toca ambos círculos para jugar';
     if (tuTouching && !ellaTouching) return '👆 Espera que ella toque...';
     if (!tuTouching && ellaTouching) return '👆 Espera que toques...';
-    if (gameState === 'ready') return '🎯 ¡Ya! Comenzando...';
     if (gameState === 'counting') return '🎲 Sorteando...';
     if (gameState === 'showing' && winner) return `🎉 ¡Ganó ${winner}!`;
     return '❓';
@@ -148,20 +159,18 @@ export default function DedosScreen() {
             <Animated.View
               style={[
                 styles.fingerCircle,
-                (winner === 'Tu' || tuTouching) && styles.fingerCircleActive,
+                tuTouching && styles.fingerCircleActive,
+                winner === 'Tu' && styles.fingerCircleWinner,
                 loser === 'Tu' && styles.fingerCircleLoser,
                 { transform: [{ scale: winner === 'Tu' ? 1.1 : 1 }] }
               ]}
+              {...tuPanResponder.panHandlers}
             >
-              <Pressable
-                style={styles.touchArea}
-                onPressIn={handleTuPressIn}
-                onPressOut={handleTuPressOut}
-              >
-                <Text style={styles.fingerEmoji}>✌️</Text>
-                <Text style={styles.fingerLabel}>Tú</Text>
-                {winner === 'Tu' && <Text style={styles.winnerBadge}>✓</Text>}
-              </Pressable>
+              <Text style={styles.fingerEmoji}>✌️</Text>
+              <Text style={styles.fingerLabel}>Tú</Text>
+              {winner === 'Tu' && (
+                <View style={styles.winnerBadge}><Text style={styles.winnerBadgeText}>✓</Text></View>
+              )}
             </Animated.View>
           </View>
 
@@ -171,20 +180,18 @@ export default function DedosScreen() {
             <Animated.View
               style={[
                 styles.fingerCircle,
-                (winner === 'Ella' || ellaTouching) && styles.fingerCircleActive,
+                ellaTouching && styles.fingerCircleActive,
+                winner === 'Ella' && styles.fingerCircleWinner,
                 loser === 'Ella' && styles.fingerCircleLoser,
                 { transform: [{ scale: winner === 'Ella' ? 1.1 : 1 }] }
               ]}
+              {...ellaPanResponder.panHandlers}
             >
-              <Pressable
-                style={styles.touchArea}
-                onPressIn={handleEllaPressIn}
-                onPressOut={handleEllaPressOut}
-              >
-                <Text style={styles.fingerEmoji}>✌️</Text>
-                <Text style={styles.fingerLabel}>Ella</Text>
-                {winner === 'Ella' && <Text style={styles.winnerBadge}>✓</Text>}
-              </Pressable>
+              <Text style={styles.fingerEmoji}>✌️</Text>
+              <Text style={styles.fingerLabel}>Ella</Text>
+              {winner === 'Ella' && (
+                <View style={styles.winnerBadge}><Text style={styles.winnerBadgeText}>✓</Text></View>
+              )}
             </Animated.View>
           </View>
         </View>
@@ -255,21 +262,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 107, 157, 0.2)',
     borderColor: '#FF6B9D',
   },
-  fingerCircleLoser: {
-    backgroundColor: '#E0E0E0',
-    borderColor: '#BDBDBD',
-    opacity: 0.6,
-  },
   fingerCircleWinner: {
     backgroundColor: '#FF6B9D',
     borderColor: '#FF1493',
     borderWidth: 5,
   },
-  touchArea: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
+  fingerCircleLoser: {
+    backgroundColor: '#E0E0E0',
+    borderColor: '#BDBDBD',
+    opacity: 0.6,
   },
   fingerEmoji: {
     fontSize: 40,
@@ -290,6 +291,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6B9D',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  winnerBadgeText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
   vsText: {
     fontSize: 24,
