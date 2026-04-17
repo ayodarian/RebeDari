@@ -108,7 +108,7 @@ export default function DedosScreen() {
               </View>
             ))}
             {history.length === 0 && (
-              <Text style={styles.historyEmpty}>Sinjugadas aún</Text>
+              <Text style={styles.historyEmpty}>Sin jugadas aún</Text>
             )}
           </View>
         </View>
@@ -123,10 +123,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 50,
     paddingBottom: 15,
     paddingHorizontal: 15,
-    backgroundColor: '#FFFFFF',
   },
   title: {
     fontSize: 24,

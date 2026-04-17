@@ -1,6 +1,5 @@
 import { View, Text, StyleSheet, FlatList, Image, Dimensions, Pressable } from 'react-native';
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
 
@@ -76,10 +75,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 50,
     paddingBottom: 15,
     paddingHorizontal: 15,
-    backgroundColor: '#FFFFFF',
   },
   title: {
     fontSize: 28,
@@ -89,6 +87,8 @@ const styles = StyleSheet.create({
   photoContainer: {
     marginBottom: 15,
     backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    overflow: 'hidden',
   },
   photoHeader: {
     flexDirection: 'row',
@@ -109,8 +109,8 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   photoPlaceholder: {
-    width: width,
-    height: width,
+    width: width - 30,
+    height: width - 30,
     backgroundColor: '#F5F5F5',
     alignItems: 'center',
     justifyContent: 'center',

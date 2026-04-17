@@ -1,5 +1,7 @@
-import { View, Text, StyleSheet, FlatList, TextInput, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, Pressable, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
 import { useState, useEffect } from 'react';
+
+const { height } = Dimensions.get('window');
 
 interface Carta {
   id: string;
@@ -91,10 +93,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 50,
     paddingBottom: 15,
     paddingHorizontal: 15,
-    backgroundColor: '#FFFFFF',
   },
   title: {
     fontSize: 24,
@@ -153,20 +154,20 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     padding: 15,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5E5',
+    backgroundColor: 'transparent',
     alignItems: 'flex-end',
   },
   input: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     paddingHorizontal: 15,
     paddingVertical: 10,
     fontSize: 16,
     maxHeight: 100,
     marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
   },
   enviarButton: {
     width: 44,

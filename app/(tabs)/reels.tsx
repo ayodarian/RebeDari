@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, FlatList, Dimensions } from 'react-native';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 
 const { width, height } = Dimensions.get('window');
 
@@ -30,14 +30,6 @@ export default function ReelsScreen() {
       <View style={styles.videoOverlay}>
         <Text style={styles.caption}>{item.caption}</Text>
       </View>
-      <View style={styles.videoActions}>
-        <Text style={styles.actionIcon}>❤️</Text>
-        <Text style={styles.actionLabel}>Like</Text>
-        <Text style={styles.actionIcon}>💬</Text>
-        <Text style={styles.actionLabel}>Comentar</Text>
-        <Text style={styles.actionIcon}>📤</Text>
-        <Text style={styles.actionLabel}>Compartir</Text>
-      </View>
     </View>
   );
 
@@ -56,7 +48,7 @@ export default function ReelsScreen() {
         keyExtractor={(item) => item.id}
         pagingEnabled
         showsVerticalScrollIndicator={false}
-        snapToInterval={height * 0.7}
+        snapToInterval={height * 0.6}
         snapToAlignment="start"
         decelerationRate="fast"
         onViewableItemsChanged={({ viewableItems }: any) => {
@@ -79,30 +71,31 @@ export default function ReelsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: '#FFFFFF',
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 50,
     paddingBottom: 15,
     paddingHorizontal: 15,
-    backgroundColor: '#000000',
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#FF6B9D',
   },
   videoContainer: {
     width: width,
-    height: height * 0.65,
+    height: height * 0.55,
     justifyContent: 'center',
   },
   videoPlaceholder: {
-    width: width,
-    height: height * 0.55,
+    width: width - 30,
+    height: width - 30,
     backgroundColor: '#1A1A1A',
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 15,
+    marginHorizontal: 15,
   },
   placeholderText: {
     fontSize: 60,
@@ -117,27 +110,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 80,
     left: 15,
-    right: 100,
   },
   caption: {
     fontSize: 14,
     color: '#FFFFFF',
     fontWeight: '500',
-  },
-  videoActions: {
-    position: 'absolute',
-    right: 10,
-    bottom: 100,
-    alignItems: 'center',
-  },
-  actionIcon: {
-    fontSize: 28,
-    marginBottom: 5,
-  },
-  actionLabel: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    marginBottom: 15,
   },
   emptyContainer: {
     alignItems: 'center',
