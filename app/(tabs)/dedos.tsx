@@ -1,106 +1,55 @@
-import { View, Text, StyleSheet, Animated, Easing, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Easing } from 'react-native';
 import { useState, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type Player = 'Tu' | 'Ella';
+type GameType = 'ruleta' | 'ppt';
+type Choice = 'piedra' | 'papel' | 'tijera' | null;
 
 interface HistoryItem {
-  winner: Player;
+  game: string;
+  result: string;
   date: string;
-  tuNumber: number;
-  ellaNumber: number;
 }
+
+const OPTIONS: Exclude<Choice, null>[] = ['piedra', 'papel', 'tijera'];
+const EMOJIS: Record<Exclude<Choice, null>, string> = {
+  piedra: '🪨',
+  papel: '📄',
+  tijera: '✂️'
+};
+const RULETA_RESULTS = ['Gana Dariancin', 'Gana Lebebe'];
 
 export default function DedosScreen() {
   const insets = useSafeAreaInsets();
-  const [gameState, setGameState] = useState<'waiting' | 'counting' | 'showing'>('waiting');
-  const [tuTouching, setTuTouching] = useState(false);
-  const [ellaTouching, setEllaTouching] = useState(false);
-  const [winner, setWinner] = useState<Player | null>(null);
-  const [loser, setLoser] = useState<Player | null>(null);
+  
+  // Estado global: juego activo e historial
+  const [activeGame, setActiveGame] = useState<GameType>('ruleta');
   const [history, setHistory] = useState<HistoryItem[]>([]);
-
-  const pulseAnim = useRef(new Animated.Value(1));
-  const timerRef = useRef<any>(null);
-  const animationRef = useRef<any>(null);
-
-  const tuPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        setTuTouching(true);
-      },
-      onPanResponderRelease: () => {
-        setTuTouching(false);
-      },
-      onPanResponderTerminate: () => {
-        setTuTouching(false);
-      },
-    })
-  ).current;
-
-  const ellaPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        setEllaTouching(true);
-      },
-      onPanResponderRelease: () => {
-        setEllaTouching(false);
-      },
-      onPanResponderTerminate: () => {
-        setEllaTouching(false);
-      },
-    })
-  ).current;
-
-  const startCountdown = () => {
-    if (gameState !== 'waiting') return;
+  
+  // === JUEGO 1: RULETA DE DECISIONES ===
+  const [ruletaTexto, setRuletaTexto] = useState('¿Quién gana?');
+  const [isSpinning, setIsSpinning] = useState(false);
+  const ruletaIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  const spinRuleta = () => {
+    if (isSpinning) return;
+    setIsSpinning(true);
     
-    setGameState('counting');
-
-    animationRef.current = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim.current, {
-          toValue: 1.15,
-          duration: 400,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim.current, {
-          toValue: 1,
-          duration: 400,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    animationRef.current.start();
-
-    timerRef.current = setTimeout(() => {
-      if (animationRef.current) {
-        animationRef.current.stop();
+    ruletaIntervalRef.current = setInterval(() => {
+      const randomText = RULETA_RESULTS[Math.floor(Math.random() * RULETA_RESULTS.length)];
+      setRuletaTexto(randomText);
+    }, 100);
+    
+    setTimeout(() => {
+      if (ruletaIntervalRef.current) {
+        clearInterval(ruletaIntervalRef.current);
+        ruletaIntervalRef.current = null;
       }
       
-      const tuNum = Math.floor(Math.random() * 10) + 1;
-      const ellaNum = Math.floor(Math.random() * 10) + 1;
+      const winner = RULETA_RESULTS[Math.floor(Math.random() * RULETA_RESULTS.length)];
+      setRuletaTexto(winner);
+      setIsSpinning(false);
       
-      let roundWinner: Player = 'Tu';
-      if (ellaNum > tuNum) {
-        roundWinner = 'Ella';
-      } else if (ellaNum === tuNum) {
-        roundWinner = Math.random() > 0.5 ? 'Tu' : 'Ella';
-      }
-
-      const roundLoser = roundWinner === 'Tu' ? 'Ella' : 'Tu';
-
-      setWinner(roundWinner);
-      setLoser(roundLoser);
-      setGameState('showing');
-      pulseAnim.current.setValue(1);
-
       const now = new Date();
       const dateStr = now.toLocaleString('es-ES', {
         day: '2-digit',
@@ -108,110 +57,234 @@ export default function DedosScreen() {
         hour: '2-digit',
         minute: '2-digit'
       });
-
-      setHistory([{ winner: roundWinner, date: dateStr, tuNumber: tuNum, ellaNumber: ellaNum }, ...history].slice(0, 10));
+      
+      const newItem: HistoryItem = {
+        game: 'Ruleta',
+        result: winner,
+        date: dateStr
+      };
+      setHistory([newItem, ...history].slice(0, 10));
     }, 3000);
   };
-
-  const resetGame = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
+  
+  // === JUEGO 2: PIEDRA, PAPEL, TIJERA (CIEGO) ===
+  const [eleccionDarian, setEleccionDarian] = useState<Choice>(null);
+  const [eleccionLebebe, setEleccionLebebe] = useState<Choice>(null);
+  const [faseJuego, setFaseJuego] = useState<'seleccion' | 'revelacion'>('seleccion');
+  const [pptGanador, setPptGanador] = useState<string | null>(null);
+  
+  const seleccionar = (jugador: 'darian' | 'lebebe', choice: Choice) => {
+    if (jugador === 'darian') {
+      setEleccionDarian(choice);
+    } else {
+      setEleccionLebebe(choice);
     }
-    if (animationRef.current) {
-      animationRef.current.stop();
+  };
+  
+  const revelarGanador = () => {
+    if (!eleccionDarian || !eleccionLebebe) return;
+    
+    let winner = '';
+    
+    // Reglas clásico: Piedra vence Tijera, Tijera vence Papel, Papel vence Piedra
+    if (eleccionDarian === eleccionLebebe) {
+      winner = 'Empate';
+    } else if (
+      (eleccionDarian === 'piedra' && eleccionLebebe === 'tijera') ||
+      (eleccionDarian === 'tijera' && eleccionLebebe === 'papel') ||
+      (eleccionDarian === 'papel' && eleccionLebebe === 'piedra')
+    ) {
+      winner = 'Gana Dariancin';
+    } else {
+      winner = 'Gana Lebebe';
     }
-    setGameState('waiting');
-    setWinner(null);
-    setLoser(null);
-    pulseAnim.current.setValue(1);
+    
+    setPptGanador(`${EMOJIS[eleccionDarian as Exclude<Choice, null>]} vs ${EMOJIS[eleccionLebebe as Exclude<Choice, null>]} - ¡${winner}!`);
+    setFaseJuego('revelacion');
+    
+    const now = new Date();
+    const dateStr = now.toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    const newItem: HistoryItem = {
+      game: 'PPT',
+      result: winner,
+      date: dateStr
+    };
+    setHistory([newItem, ...history].slice(0, 10));
   };
-
-  // Check touch states
-  if (tuTouching && ellaTouching && gameState === 'waiting') {
-    startCountdown();
-  }
-
-  if ((!tuTouching || !ellaTouching) && gameState === 'counting') {
-    resetGame();
-  }
-
-  const getStatusMessage = () => {
-    if (!tuTouching && !ellaTouching) return '✌️ Toca ambos círculos para jugar';
-    if (tuTouching && !ellaTouching) return '👆 Espera que ella toque...';
-    if (!tuTouching && ellaTouching) return '👆 Espera que toques...';
-    if (gameState === 'counting') return '🎲 Sorteando...';
-    if (gameState === 'showing' && winner) return `🎉 ¡Ganó ${winner}!`;
-    return '❓';
+  
+  const reiniciarPPT = () => {
+    setEleccionDarian(null);
+    setEleccionLebebe(null);
+    setFaseJuego('seleccion');
+    setPptGanador(null);
   };
-
+  
+  // === COMPONENTES UI ===
+  
+  const TabButton = ({ label, game }: { label: string; game: GameType }) => (
+    <Pressable
+      style={[styles.tabButton, activeGame === game && styles.tabButtonActive]}
+      onPress={() => setActiveGame(game)}
+    >
+      <Text style={[styles.tabButtonText, activeGame === game && styles.tabButtonTextActive]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+  
+  const OptionButton = ({ emoji, onPress, selected, disabled }: { emoji: string; onPress: () => void; selected?: boolean; disabled?: boolean }) => (
+    <Pressable
+      style={[styles.optionButton, selected && styles.optionButtonSelected, disabled && styles.optionButtonDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      <Text style={styles.optionEmoji}>{emoji}</Text>
+    </Pressable>
+  );
+  
+  const HistorialItem = ({ item, index }: { item: HistoryItem; index: number }) => (
+    <View style={styles.historyItem}>
+      <Text style={styles.historyGame}>{item.game}</Text>
+      <Text style={styles.historyResult}>{item.result}</Text>
+      <Text style={styles.historyDate}>{item.date}</Text>
+    </View>
+  );
+  
+  // === RENDERIZADO ===
+  
+  const renderRuleta = () => (
+    <View style={styles.gameContainer}>
+      <View style={styles.ruletaBox}>
+        <Text style={styles.ruletaTexto}>{ruletaTexto}</Text>
+      </View>
+      
+      <Pressable
+        style={[styles.girarButton, isSpinning && styles.girarButtonDisabled]}
+        onPress={spinRuleta}
+        disabled={isSpinning}
+      >
+        <Text style={styles.girarButtonText}>
+          {isSpinning ? 'Girando...' : '🎰 Girar'}
+        </Text>
+      </Pressable>
+    </View>
+  );
+  
+  const renderPPT = () => {
+    if (faseJuego === 'seleccion') {
+      const ambosListos = eleccionDarian && eleccionLebebe;
+      
+      return (
+        <View style={styles.gameContainer}>
+          <View style={styles.pptContainer}>
+            {/* Columna Dariancin */}
+            <View style={styles.pptColumn}>
+              <Text style={styles.pptLabel}>Dariancin</Text>
+              {eleccionDarian ? (
+                <View style={styles.readyBox}>
+                  <Text style={styles.readyText}>✅ Listo</Text>
+                </View>
+              ) : (
+                <View style={styles.optionsRow}>
+                  {OPTIONS.map((opt) => (
+                    <OptionButton
+                      key={opt}
+                      emoji={EMOJIS[opt]}
+                      onPress={() => seleccionar('darian', opt)}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+            
+            <Text style={styles.pptVS}>VS</Text>
+            
+            {/* Columna Lebebe */}
+            <View style={styles.pptColumn}>
+              <Text style={styles.pptLabel}>Lebebe</Text>
+              {eleccionLebebe ? (
+                <View style={styles.readyBox}>
+                  <Text style={styles.readyText}>✅ Listo</Text>
+                </View>
+              ) : (
+                <View style={styles.optionsRow}>
+                  {OPTIONS.map((opt) => (
+                    <OptionButton
+                      key={opt}
+                      emoji={EMOJIS[opt]}
+                      onPress={() => seleccionar('lebebe', opt)}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+          
+          <Pressable
+            style={[styles.revelarButton, !ambosListos && styles.revelarButtonDisabled]}
+            onPress={revelarGanador}
+            disabled={!ambosListos}
+          >
+            <Text style={styles.revelarButtonText}>
+              {ambosListos ? '🎯 Revelar Ganador' : 'Esperando...'}
+            </Text>
+          </Pressable>
+        </View>
+      );
+    }
+    
+    // Fase revelación
+    return (
+      <View style={styles.gameContainer}>
+        <View style={styles.resultadoBox}>
+          <Text style={styles.resultadoTexto}>{pptGanador}</Text>
+        </View>
+        
+        <Pressable style={styles.jugarDeNuevoButton} onPress={reiniciarPPT}>
+          <Text style={styles.jugarDeNuevoText}>🔄 Jugar de nuevo</Text>
+        </Pressable>
+      </View>
+    );
+  };
+  
+  // === MAIN RENDER ===
+  
   return (
     <View style={[styles.container, { paddingTop: insets.top + 15 }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Dedos</Text>
       </View>
-
-      <View style={styles.content}>
-        <Text style={styles.subtitle}>{getStatusMessage()}</Text>
-
-        <View style={styles.playersContainer}>
-          <View>
-            <Animated.View
-              style={[
-                styles.fingerCircle,
-                tuTouching && styles.fingerCircleActive,
-                winner === 'Tu' && styles.fingerCircleWinner,
-                loser === 'Tu' && styles.fingerCircleLoser,
-                { transform: [{ scale: winner === 'Tu' ? 1.1 : 1 }] }
-              ]}
-              {...tuPanResponder.panHandlers}
-            >
-              <Text style={styles.fingerEmoji}>✌️</Text>
-              <Text style={styles.fingerLabel}>Tú</Text>
-              {winner === 'Tu' && (
-                <View style={styles.winnerBadge}><Text style={styles.winnerBadgeText}>✓</Text></View>
-              )}
-            </Animated.View>
-          </View>
-
-          <Text style={styles.vsText}>VS</Text>
-
-          <View>
-            <Animated.View
-              style={[
-                styles.fingerCircle,
-                ellaTouching && styles.fingerCircleActive,
-                winner === 'Ella' && styles.fingerCircleWinner,
-                loser === 'Ella' && styles.fingerCircleLoser,
-                { transform: [{ scale: winner === 'Ella' ? 1.1 : 1 }] }
-              ]}
-              {...ellaPanResponder.panHandlers}
-            >
-              <Text style={styles.fingerEmoji}>✌️</Text>
-              <Text style={styles.fingerLabel}>Ella</Text>
-              {winner === 'Ella' && (
-                <View style={styles.winnerBadge}><Text style={styles.winnerBadgeText}>✓</Text></View>
-              )}
-            </Animated.View>
-          </View>
-        </View>
-
+      
+      {/* Tabs para cambiar juego */}
+      <View style={styles.tabsContainer}>
+        <TabButton label="Ruleta" game="ruleta" />
+        <TabButton label="Piedra, Papel, Tijera" game="ppt" />
+      </View>
+      
+      {/* Juego activo */}
+      <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
+        {activeGame === 'ruleta' ? renderRuleta() : renderPPT()}
+        
+        {/* Historial */}
         <View style={styles.historySection}>
           <Text style={styles.historyTitle}>Historial</Text>
           <View style={styles.historyList}>
-            {history.map((round, index) => (
-              <View key={index} style={styles.historyItem}>
-                <Text style={styles.historyText}>
-                  {round.winner === 'Tu' ? '🔥' : '💜'} {round.winner === 'Tu' ? 'Ganaste' : 'Ganó ella'} • {round.date}
-                </Text>
-              </View>
-            ))}
-            {history.length === 0 && (
+            {history.length === 0 ? (
               <Text style={styles.historyEmpty}>Sin jugadas aún</Text>
+            ) : (
+              history.map((item, index) => (
+                <HistorialItem key={index} item={item} index={index} />
+              ))
             )}
           </View>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -230,81 +303,176 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FF6B9D',
   },
-  content: {
-    flex: 1,
-    alignItems: 'center',
+  tabsContainer: {
+    flexDirection: 'row',
     paddingHorizontal: 15,
+    marginBottom: 20,
+    gap: 10,
   },
-  subtitle: {
-    fontSize: 18,
+  tabButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 182, 193, 0.5)',
+    alignItems: 'center',
+  },
+  tabButtonActive: {
+    backgroundColor: 'rgba(255, 107, 157, 0.7)',
+  },
+  tabButtonText: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#666666',
+  },
+  tabButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 110,
+    paddingHorizontal: 15,
+  },
+  gameContainer: {
+    alignItems: 'center',
     marginBottom: 30,
+  },
+  
+  // === RULETA STYLES ===
+  ruletaBox: {
+    width: '100%',
+    paddingVertical: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    borderRadius: 20,
+    alignItems: 'center',
+    marginBottom: 25,
+  },
+  ruletaTexto: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FF6B9D',
     textAlign: 'center',
   },
-  playersContainer: {
+  girarButton: {
+    backgroundColor: '#FF6B9D',
+    paddingVertical: 15,
+    paddingHorizontal: 50,
+    borderRadius: 25,
+  },
+  girarButtonDisabled: {
+    opacity: 0.5,
+  },
+  girarButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  
+  // === PPT STYLES ===
+  pptContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 30,
+    marginBottom: 25,
   },
-  fingerCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#F5F5F5',
+  pptColumn: {
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: 'rgba(255, 107, 157, 0.3)',
+    flex: 1,
   },
-  fingerCircleActive: {
-    backgroundColor: 'rgba(255, 107, 157, 0.2)',
-    borderColor: '#FF6B9D',
-  },
-  fingerCircleWinner: {
-    backgroundColor: '#FF6B9D',
-    borderColor: '#FF1493',
-    borderWidth: 5,
-  },
-  fingerCircleLoser: {
-    backgroundColor: '#E0E0E0',
-    borderColor: '#BDBDBD',
-    opacity: 0.6,
-  },
-  fingerEmoji: {
-    fontSize: 40,
-  },
-  fingerLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333333',
-    marginTop: 5,
-  },
-  winnerBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#FF6B9D',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  winnerBadgeText: {
-    color: '#FFFFFF',
+  pptLabel: {
+    fontSize: 16,
     fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 15,
   },
-  vsText: {
-    fontSize: 24,
+  pptVS: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#8E8E93',
-    marginHorizontal: 25,
+    marginHorizontal: 15,
   },
-  historySection: {
+  optionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  optionButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 107, 157, 0.3)',
+  },
+  optionButtonSelected: {
+    backgroundColor: 'rgba(255, 107, 157, 0.3)',
+    borderColor: '#FF6B9D',
+  },
+  optionButtonDisabled: {
+    opacity: 0.5,
+  },
+  optionEmoji: {
+    fontSize: 28,
+  },
+  readyBox: {
+    width: 80,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#90EE90',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  readyText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  revelarButton: {
+    backgroundColor: '#FF6B9D',
+    paddingVertical: 15,
+    paddingHorizontal: 40,
+    borderRadius: 25,
+  },
+  revelarButtonDisabled: {
+    opacity: 0.5,
+  },
+  revelarButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  resultadoBox: {
     width: '100%',
-    paddingHorizontal: 15,
+    paddingVertical: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 20,
+    alignItems: 'center',
+    marginBottom: 25,
+  },
+  resultadoTexto: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FF6B9D',
+    textAlign: 'center',
+  },
+  jugarDeNuevoButton: {
+    backgroundColor: '#FF6B9D',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 20,
+  },
+  jugarDeNuevoText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  
+  // === HISTORIAL STYLES ===
+  historySection: {
+    marginTop: 20,
   },
   historyTitle: {
     fontSize: 16,
@@ -317,17 +485,29 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.6)',
     borderRadius: 15,
     padding: 15,
-    minHeight: 120,
+    minHeight: 100,
   },
   historyItem: {
-    paddingVertical: 8,
+    flexDirection: 'row',
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
-  historyText: {
+  historyGame: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#FF6B9D',
+    width: 50,
+  },
+  historyResult: {
+    flex: 1,
     fontSize: 14,
     color: '#333333',
     textAlign: 'center',
+  },
+  historyDate: {
+    fontSize: 12,
+    color: '#8E8E93',
   },
   historyEmpty: {
     fontSize: 14,
