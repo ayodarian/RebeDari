@@ -20,17 +20,27 @@ interface Trip {
 
 type ModalType = 'capsula' | 'abrlo' | 'bitacora' | null;
 
-// Fecha de inicio de novios: 22 de enero de 2024 a las 18:35
-const START_DATE = new Date(2024, 0, 22, 18, 35, 0);
+// Fecha de inicio de novios: 22 de enero de 2025 a las 18:35
+const START_DATE = new Date(2025, 0, 22, 18, 35, 0);
 // Fecha objetivo cápsula: 22 de enero de 2027 a las 00:00
 const TARGET_CAPSULA = new Date(2027, 0, 22, 0, 0, 0);
 
 // 4 listas × 15 mensajes cada una
-const MENSAJES: Record<string, string[]> = {
-  triste: Array.from({ length: 15 }, (_, i) => `Mensaje triste ${i + 1}`),
-  dormir: Array.from({ length: 15 }, (_, i) => `Mensaje ${i + 1}`),
-  enojada: Array.from({ length: 15 }, (_, i) => `Mensaje ${i + 1}`),
-  extranes: Array.from({ length: 15 }, (_, i) => `Mensaje ${i + 1}`),
+const mensajesTriste = Array.from({ length: 15 }, (_, i) => `Mensaje Personalizado ${i + 1}`);
+const mensajesSueno = Array.from({ length: 15 }, (_, i) => `Mensaje Personalizado ${i + 1}`);
+const mensajesEnojada = Array.from({ length: 15 }, (_, i) => `Mensaje Personalizado ${i + 1}`);
+const mensajesExtrano = Array.from({ length: 15 }, (_, i) => `Mensaje Personalizado ${i + 1}`);
+
+const getMensajeAleatorio = (categoria: string): string => {
+  let mensajes: string[] = [];
+  switch (categoria) {
+    case 'triste': mensajes = mensajesTriste; break;
+    case 'sueno': mensajes = mensajesSueno; break;
+    case 'enojada': mensajes = mensajesEnojada; break;
+    case 'extrano': mensajes = mensajesExtrano; break;
+  }
+  const indice = Math.floor(Math.random() * 15);
+  return mensajes[indice];
 };
 
 function calculateTimeDiff(start: Date, end: Date): { years: number; months: number; days: number; hours: number; minutes: number; seconds: number } {
@@ -53,15 +63,15 @@ function calculateTimeDiff(start: Date, end: Date): { years: number; months: num
   return { years: Math.abs(years), months: Math.abs(months), days: Math.abs(days), hours: Math.abs(hours), minutes: Math.abs(minutes), seconds: Math.abs(seconds) };
 }
 
-function formatTimeDifference(time: { years: number; months: number; days: number; hours: number; minutes: number; seconds: number }): string {
-  const parts = [];
+function formatTimeDifference(time: { years: number; months: number; days: number; hours: number; minutes: number; seconds: number }): string[] {
+  const parts: string[] = [];
   if (time.years > 0) parts.push(`${time.years} año${time.years > 1 ? 's' : ''}`);
   if (time.months > 0) parts.push(`${time.months} mes${time.months > 1 ? 'es' : ''}`);
   if (time.days > 0) parts.push(`${time.days} día${time.days > 1 ? 's' : ''}`);
   if (time.hours > 0) parts.push(`${time.hours} hora${time.hours > 1 ? 's' : ''}`);
   if (time.minutes > 0) parts.push(`${time.minutes} minuto${time.minutes > 1 ? 's' : ''}`);
   parts.push(`${time.seconds} segundo${time.seconds !== 1 ? 's' : ''}`);
-  return parts.join(', ');
+  return parts;
 }
 
 export default function FeedScreen() {
@@ -74,38 +84,29 @@ export default function FeedScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalType, setModalType] = useState<ModalType>(null);
   
-  // Estados para contadores en tiempo real
-  const [timeTogether, setTimeTogether] = useState('');
+  const [timeTogether, setTimeTogether] = useState<string[]>([]);
   const [countdown, setCountdown] = useState('');
   
-  // Estados bitácora
-  const [trips, setTrips] = useState<Trip[]>([
-    { id: '1', date: '15/08/2024', place: 'Playa del Carmen', desc: 'Atardecer en el mar' },
-    { id: '2', date: '22/10/2024', place: 'CDMX', desc: 'Cita en el Centro' },
-    { id: '3', date: '05/01/2025', place: 'Monterrey', desc: 'Noche de pizzas' },
-  ]);
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [newTrip, setNewTrip] = useState({ date: '', place: '', desc: '' });
 
-  // Efecto para contadores en tiempo real
   useEffect(() => {
     const updateCounters = () => {
       const now = new Date();
       
-      // Tiempo juntos (desde 22/01/2024 18:35)
       const timeDiff = calculateTimeDiff(START_DATE, now);
       setTimeTogether(formatTimeDifference(timeDiff));
       
-      // Cuenta regresiva cápsula (hasta 22/01/2027)
       if (now < TARGET_CAPSULA) {
         const targetDiff = calculateTimeDiff(now, TARGET_CAPSULA);
-        const targetStr = [];
-        if (targetDiff.years > 0) targetStr.push(`${targetDiff.years} año${targetDiff.years > 1 ? 's' : ''}`);
-        if (targetDiff.months > 0) targetStr.push(`${targetDiff.months} mes${targetDiff.months > 1 ? 'es' : ''}`);
-        if (targetDiff.days > 0) targetStr.push(`${targetDiff.days} día${targetDiff.days > 1 ? 's' : ''}`);
-        if (targetStr.length === 0 || targetDiff.hours > 0) targetStr.push(`${targetDiff.hours} hora${targetDiff.hours > 1 ? 's' : ''}`);
-        if (targetStr.length === 0 || targetDiff.minutes > 0) targetStr.push(`${targetDiff.minutes} minuto${targetDiff.minutes > 1 ? 's' : ''}`);
-        targetStr.push(`${targetDiff.seconds} segundo${targetDiff.seconds !== 1 ? 's' : ''}`);
-        setCountdown(`Faltan: ${targetStr.join(', ')}`);
+        const targetParts: string[] = [];
+        if (targetDiff.years > 0) targetParts.push(`${targetDiff.years} año${targetDiff.years > 1 ? 's' : ''}`);
+        if (targetDiff.months > 0) targetParts.push(`${targetDiff.months} mes${targetDiff.months > 1 ? 'es' : ''}`);
+        if (targetDiff.days > 0) targetParts.push(`${targetDiff.days} día${targetDiff.days > 1 ? 's' : ''}`);
+        if (targetParts.length === 0 || targetDiff.hours > 0) targetParts.push(`${targetDiff.hours} hora${targetDiff.hours > 1 ? 's' : ''}`);
+        if (targetParts.length === 0 || targetDiff.minutes > 0) targetParts.push(`${targetDiff.minutes} minuto${targetDiff.minutes > 1 ? 's' : ''}`);
+        targetParts.push(`${targetDiff.seconds} segundo${targetDiff.seconds !== 1 ? 's' : ''}`);
+        setCountdown(`Faltan: ${targetParts.join(', ')}`);
       } else {
         setCountdown('¡Ya se puede abrir! 🎉');
       }
@@ -127,10 +128,8 @@ export default function FeedScreen() {
   };
 
   const showCartaMensaje = (categoria: string) => {
-    const mensajes = MENSAJES[categoria];
-    const randomIndex = Math.floor(Math.random() * mensajes.length);
-    const mensajeAleatorio = mensajes[randomIndex];
-    Alert.alert('Para ti 💕', mensajeAleatorio);
+    const mensaje = getMensajeAleatorio(categoria);
+    Alert.alert('Para ti 💕', mensaje);
   };
 
   const agregarTrip = () => {
@@ -148,6 +147,17 @@ export default function FeedScreen() {
     setNewTrip({ date: '', place: '', desc: '' });
   };
 
+  const eliminarTrip = (id: string) => {
+    Alert.alert(
+      'Eliminar Aventura',
+      '¿Estás seguro de eliminar esta aventura?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Eliminar', style: 'destructive', onPress: () => setTrips(trips.filter(t => t.id !== id)) },
+      ]
+    );
+  };
+
   const CardButton = ({ title, onPress }: { title: string; onPress: () => void }) => (
     <Pressable style={styles.cardButton} onPress={onPress}>
       <Text style={styles.cardButtonText}>{title}</Text>
@@ -161,6 +171,11 @@ export default function FeedScreen() {
           <Text style={styles.modalIcon}>🔒</Text>
           <Text style={styles.modalTitle}>Se abre en nuestro Aniversario</Text>
           <Text style={styles.counterText}>{countdown}</Text>
+          <View style={styles.mensajeSecretoBox}>
+            <Text style={styles.mensajeSecretoLabel}>Mensaje Secreto:</Text>
+            <Text style={styles.mensajeSecretoText}>**********</Text>
+            <Text style={styles.mensajeSecretoHint}>(Se revelará el 22/01/2027)</Text>
+          </View>
         </View>
       );
     }
@@ -172,13 +187,13 @@ export default function FeedScreen() {
           <Pressable style={styles.cartaButton} onPress={() => showCartaMensaje('triste')}>
             <Text style={styles.cartaButtonText}>...estés triste</Text>
           </Pressable>
-          <Pressable style={styles.cartaButton} onPress={() => showCartaMensaje('dormir')}>
+          <Pressable style={styles.cartaButton} onPress={() => showCartaMensaje('sueno')}>
             <Text style={styles.cartaButtonText}>...no puedas dormir</Text>
           </Pressable>
           <Pressable style={styles.cartaButton} onPress={() => showCartaMensaje('enojada')}>
             <Text style={styles.cartaButtonText}>...estés enojada</Text>
           </Pressable>
-          <Pressable style={styles.cartaButton} onPress={() => showCartaMensaje('extranes')}>
+          <Pressable style={styles.cartaButton} onPress={() => showCartaMensaje('extrano')}>
             <Text style={styles.cartaButtonText}>...me extrañes</Text>
           </Pressable>
         </View>
@@ -190,7 +205,6 @@ export default function FeedScreen() {
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Bitácora</Text>
           
-          {/* Formulario para agregar */}
           <View style={styles.formContainer}>
             <TextInput
               style={styles.input}
@@ -219,15 +233,23 @@ export default function FeedScreen() {
             </Pressable>
           </View>
           
-          {/* Lista de aventuras */}
           <ScrollView style={styles.tripsList}>
-            {trips.map((trip) => (
-              <View key={trip.id} style={styles.tripItem}>
-                <Text style={styles.tripDate}>{trip.date}</Text>
-                <Text style={styles.tripPlace}>{trip.place}</Text>
-                <Text style={styles.tripDesc}>{trip.desc}</Text>
-              </View>
-            ))}
+            {trips.length === 0 ? (
+              <Text style={styles.sinAventuras}>Sin aventuras registradas</Text>
+            ) : (
+              trips.map((trip) => (
+                <View key={trip.id} style={styles.tripItem}>
+                  <View style={styles.tripInfo}>
+                    <Text style={styles.tripDate}>{trip.date}</Text>
+                    <Text style={styles.tripPlace}>{trip.place}</Text>
+                    <Text style={styles.tripDesc}>{trip.desc}</Text>
+                  </View>
+                  <Pressable style={styles.eliminarButton} onPress={() => eliminarTrip(trip.id)}>
+                    <Text style={styles.eliminarButtonText}>🗑️</Text>
+                  </Pressable>
+                </View>
+              ))
+            )}
           </ScrollView>
         </View>
       );
@@ -256,7 +278,11 @@ export default function FeedScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>RebeDari</Text>
-        <Text style={styles.timeCounter}>❤️ {timeTogether}</Text>
+        <View style={styles.timeContainer}>
+          {timeTogether.map((part, index) => (
+            <Text key={index} style={styles.timeCounter}>{part}</Text>
+          ))}
+        </View>
       </View>
 
       <ScrollView 
@@ -305,18 +331,20 @@ const styles = StyleSheet.create({
   header: {
     paddingBottom: 15,
     paddingHorizontal: 15,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#FF6B9D',
   },
+  timeContainer: {
+    marginTop: 8,
+  },
   timeCounter: {
-    fontSize: 10,
-    color: '#666666',
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333333',
+    lineHeight: 22,
   },
   panelScroll: {
     maxHeight: 100,
@@ -426,6 +454,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333333',
     textAlign: 'center',
+    marginBottom: 20,
+  },
+  mensajeSecretoBox: {
+    width: '100%',
+    padding: 15,
+    backgroundColor: 'rgba(255, 182, 193, 0.2)',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  mensajeSecretoLabel: {
+    fontSize: 12,
+    color: '#666666',
+    marginBottom: 5,
+  },
+  mensajeSecretoText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333333',
+    letterSpacing: 3,
+  },
+  mensajeSecretoHint: {
+    fontSize: 10,
+    color: '#8E8E93',
+    marginTop: 5,
   },
   cartaButton: {
     width: '100%',
@@ -476,11 +528,22 @@ const styles = StyleSheet.create({
     width: '100%',
     maxHeight: 200,
   },
+  sinAventuras: {
+    textAlign: 'center',
+    color: '#8E8E93',
+    fontSize: 14,
+    paddingVertical: 20,
+  },
   tripItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     width: '100%',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  tripInfo: {
+    flex: 1,
   },
   tripDate: {
     fontSize: 12,
@@ -495,6 +558,12 @@ const styles = StyleSheet.create({
   tripDesc: {
     fontSize: 14,
     color: '#666666',
+  },
+  eliminarButton: {
+    padding: 8,
+  },
+  eliminarButtonText: {
+    fontSize: 18,
   },
   closeButton: {
     marginTop: 20,
