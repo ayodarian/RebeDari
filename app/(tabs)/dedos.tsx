@@ -256,7 +256,7 @@ export default function DedosScreen() {
   // === MAIN RENDER ===
   
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 15 }]}>
+    <View style={[styles.container, { paddingTop: 5 }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Dedos</Text>
       </View>

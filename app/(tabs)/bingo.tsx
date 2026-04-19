@@ -163,7 +163,7 @@ export default function BingoScreen() {
   const filas = chunkArray(casillasFiltradas, 5);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top > 0 ? insets.top + 15 : 65 }]}>
+    <View style={[styles.container, { paddingTop: 5 }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Bingo</Text>
       </View>
