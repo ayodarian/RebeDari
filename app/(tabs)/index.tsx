@@ -26,6 +26,10 @@ const mensajesSueno = Array.from({ length: 15 }, (_, i) => `Mensaje Personalizad
 const mensajesEnojada = Array.from({ length: 15 }, (_, i) => `Mensaje Personalizado ${i + 1}`);
 const mensajesExtrano = Array.from({ length: 15 }, (_, i) => `Mensaje Personalizado ${i + 1}`);
 
+const TARGET_CAPSULA = new Date(2027, 0, 22, 0, 0, 0);
+
+const mensajeSecreto = 'Aquí va el mensaje de amor que se revelará en el futuro. Cada momento juntos ha sido especial, y este es solo un pequeño recordatorio de lo mucho que te amo. Gracias por cada sonrisa, cada abrazo y por estar siempre a mi lado. Eres lo mejor de mi vida y prometo seguir creando momentos bonitos contigo. Te quiero mucho más de lo que las palabras pueden expresar. ❤️';
+
 function calculateTimeDiff(start: Date, end: Date): { years: number; months: number; days: number; hours: number; minutes: number; seconds: number } {
   let years = end.getFullYear() - start.getFullYear();
   let months = end.getMonth() - start.getMonth();
@@ -69,17 +73,18 @@ export default function FeedScreen() {
   const [modalType, setModalType] = useState<ModalType>(null);
   
   const [countdown, setCountdown] = useState('');
+  const [capsulaAbierta, setCapsulaAbierta] = useState(false);
   
   const [trips, setTrips] = useState<Trip[]>([]);
   const [newTrip, setNewTrip] = useState({ date: '', place: '', desc: '' });
 
   useEffect(() => {
-    const TARGET_CAPSULA = new Date(2027, 0, 22, 0, 0, 0);
-    
     const updateCounters = () => {
       const now = new Date();
+      const isAbierta = now >= TARGET_CAPSULA;
+      setCapsulaAbierta(isAbierta);
       
-      if (now < TARGET_CAPSULA) {
+      if (!isAbierta) {
         const targetDiff = calculateTimeDiff(now, TARGET_CAPSULA);
         const targetParts: string[] = [];
         if (targetDiff.years > 0) targetParts.push(`${targetDiff.years} año${targetDiff.years > 1 ? 's' : ''}`);
@@ -148,6 +153,17 @@ export default function FeedScreen() {
 
   const renderModalContent = () => {
     if (modalType === 'capsula') {
+      if (capsulaAbierta) {
+        return (
+          <View style={styles.modalContent}>
+            <Text style={styles.modalIcon}>💖</Text>
+            <Text style={styles.modalTitle}>¡Es momento de abrirla!</Text>
+            <ScrollView style={styles.mensajeReveladoContainer} showsVerticalScrollIndicator={false}>
+              <Text style={styles.mensajeReveladoText}>{mensajeSecreto}</Text>
+            </ScrollView>
+          </View>
+        );
+      }
       return (
         <View style={styles.modalContent}>
           <Text style={styles.modalIcon}>🔒</Text>
@@ -451,6 +467,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#8E8E93',
     marginTop: 5,
+  },
+  mensajeReveladoContainer: {
+    width: '100%',
+    maxHeight: 250,
+    marginTop: 10,
+  },
+  mensajeReveladoText: {
+    fontSize: 16,
+    color: '#333333',
+    lineHeight: 24,
+    textAlign: 'center',
+    paddingHorizontal: 5,
   },
   cartaButton: {
     width: '100%',
