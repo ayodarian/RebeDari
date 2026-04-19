@@ -257,14 +257,14 @@ export default function FeedScreen() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
         style={styles.panelScroll}
         contentContainerStyle={styles.panelContent}
       >
-        <CardButton title="1. Cápsula del Tiempo" onPress={() => openModal('capsula')} />
+        <CardButton title="1. Cápsula del\ntiempo" onPress={() => openModal('capsula')} />
         <CardButton title="2. Ábrelo cuando..." onPress={() => openModal('abrlo')} />
         <CardButton title="3. Bitácora" onPress={() => openModal('bitacora')} />
       </ScrollView>
@@ -320,13 +320,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   panelScroll: {
-    maxHeight: 100,
-    marginBottom: 10,
+    maxHeight: 70,
+    marginBottom: 5,
   },
   panelContent: {
     paddingHorizontal: 15,
-    gap: 12,
-    paddingVertical: 10,
+    gap: 10,
+    paddingVertical: 5,
   },
   cardButton: {
     width: 160,
