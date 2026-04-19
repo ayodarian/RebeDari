@@ -20,28 +20,11 @@ interface Trip {
 
 type ModalType = 'capsula' | 'abrlo' | 'bitacora' | null;
 
-// Fecha de inicio de novios: 22 de enero de 2025 a las 18:35
-const START_DATE = new Date(2025, 0, 22, 18, 35, 0);
-// Fecha objetivo cápsula: 22 de enero de 2027 a las 00:00
-const TARGET_CAPSULA = new Date(2027, 0, 22, 0, 0, 0);
 
-// 4 listas × 15 mensajes cada una
 const mensajesTriste = Array.from({ length: 15 }, (_, i) => `Mensaje Personalizado ${i + 1}`);
 const mensajesSueno = Array.from({ length: 15 }, (_, i) => `Mensaje Personalizado ${i + 1}`);
 const mensajesEnojada = Array.from({ length: 15 }, (_, i) => `Mensaje Personalizado ${i + 1}`);
 const mensajesExtrano = Array.from({ length: 15 }, (_, i) => `Mensaje Personalizado ${i + 1}`);
-
-const getMensajeAleatorio = (categoria: string): string => {
-  let mensajes: string[] = [];
-  switch (categoria) {
-    case 'triste': mensajes = mensajesTriste; break;
-    case 'sueno': mensajes = mensajesSueno; break;
-    case 'enojada': mensajes = mensajesEnojada; break;
-    case 'extrano': mensajes = mensajesExtrano; break;
-  }
-  const indice = Math.floor(Math.random() * 15);
-  return mensajes[indice];
-};
 
 function calculateTimeDiff(start: Date, end: Date): { years: number; months: number; days: number; hours: number; minutes: number; seconds: number } {
   let years = end.getFullYear() - start.getFullYear();
@@ -63,16 +46,17 @@ function calculateTimeDiff(start: Date, end: Date): { years: number; months: num
   return { years: Math.abs(years), months: Math.abs(months), days: Math.abs(days), hours: Math.abs(hours), minutes: Math.abs(minutes), seconds: Math.abs(seconds) };
 }
 
-function formatTimeDifference(time: { years: number; months: number; days: number; hours: number; minutes: number; seconds: number }): string[] {
-  const parts: string[] = [];
-  if (time.years > 0) parts.push(`${time.years} año${time.years > 1 ? 's' : ''}`);
-  if (time.months > 0) parts.push(`${time.months} mes${time.months > 1 ? 'es' : ''}`);
-  if (time.days > 0) parts.push(`${time.days} día${time.days > 1 ? 's' : ''}`);
-  if (time.hours > 0) parts.push(`${time.hours} hora${time.hours > 1 ? 's' : ''}`);
-  if (time.minutes > 0) parts.push(`${time.minutes} minuto${time.minutes > 1 ? 's' : ''}`);
-  parts.push(`${time.seconds} segundo${time.seconds !== 1 ? 's' : ''}`);
-  return parts;
-}
+const getMensajeAleatorio = (categoria: string): string => {
+  let mensajes: string[] = [];
+  switch (categoria) {
+    case 'triste': mensajes = mensajesTriste; break;
+    case 'sueno': mensajes = mensajesSueno; break;
+    case 'enojada': mensajes = mensajesEnojada; break;
+    case 'extrano': mensajes = mensajesExtrano; break;
+  }
+  const indice = Math.floor(Math.random() * 15);
+  return mensajes[indice];
+};
 
 export default function FeedScreen() {
   const insets = useSafeAreaInsets();
@@ -84,18 +68,16 @@ export default function FeedScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalType, setModalType] = useState<ModalType>(null);
   
-  const [timeTogether, setTimeTogether] = useState<string[]>([]);
   const [countdown, setCountdown] = useState('');
   
   const [trips, setTrips] = useState<Trip[]>([]);
   const [newTrip, setNewTrip] = useState({ date: '', place: '', desc: '' });
 
   useEffect(() => {
+    const TARGET_CAPSULA = new Date(2027, 0, 22, 0, 0, 0);
+    
     const updateCounters = () => {
       const now = new Date();
-      
-      const timeDiff = calculateTimeDiff(START_DATE, now);
-      setTimeTogether(formatTimeDifference(timeDiff));
       
       if (now < TARGET_CAPSULA) {
         const targetDiff = calculateTimeDiff(now, TARGET_CAPSULA);
@@ -276,15 +258,6 @@ export default function FeedScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>RebeDari</Text>
-        <View style={styles.timeContainer}>
-          {timeTogether.map((part, index) => (
-            <Text key={index} style={styles.timeCounter}>{part}</Text>
-          ))}
-        </View>
-      </View>
-
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
