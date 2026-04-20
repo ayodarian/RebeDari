@@ -17,6 +17,41 @@ interface VideoItem {
   created_at: string;
 }
 
+function VideoListItem({ item, isVisible }: { item: VideoItem; isVisible: boolean }) {
+  const player = useVideoPlayer(item.url);
+  
+  useEffect(() => {
+    if (isVisible) {
+      player.loop = true;
+      player.play();
+    } else {
+      player.pause();
+    }
+  }, [isVisible, player]);
+  
+  return (
+    <View style={styles.videoContainer}>
+      {isVisible ? (
+        <VideoView
+          player={player}
+          style={styles.videoPlayer}
+          resizeMode="cover"
+          isLooping
+          shouldPlay
+        />
+      ) : (
+        <View style={styles.videoPlaceholder}>
+          <Text style={styles.placeholderText}>🎬</Text>
+          <Text style={styles.placeholderSubtext}>Video</Text>
+        </View>
+      )}
+      <View style={styles.videoOverlay}>
+        <Text style={styles.caption}>{item.caption || 'Videos de ustedes'}</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function ReelsScreen() {
   const insets = useSafeAreaInsets();
   const [videos, setVideos] = useState<VideoItem[]>([]);
@@ -37,7 +72,7 @@ export default function ReelsScreen() {
     return () => unsubscribe();
   }, []);
 
-const pickVideo = async () => {
+  const pickVideo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['videos'],
       allowsEditing: true,
@@ -67,11 +102,6 @@ const pickVideo = async () => {
         console.error(error);
       } finally {
         setUploading(false);
-        try {
-          await FileSystem.deleteAsync(tempUri, { idempotent: true });
-        } catch (cacheError) {
-          console.log('Cache cleanup skipped:', cacheError);
-        }
       }
     }
   };
@@ -98,38 +128,12 @@ const pickVideo = async () => {
     );
   };
 
-  const renderVideo = ({ item, index }: { item: VideoItem; index: number }) => {
-    const isVisible = index === currentIndex;
-    const player = isVisible 
-      ? useVideoPlayer(item.url, (p) => {
-          p.loop = true;
-          p.play();
-        })
-      : null;
-
-    return (
-      <View style={styles.videoContainer}>
-        {isVisible && player ? (
-          <VideoView
-            ref={index === currentIndex ? videoRef : null}
-            player={player}
-            style={styles.videoPlayer}
-            resizeMode="cover"
-            isLooping
-            shouldPlay
-          />
-        ) : (
-          <View style={styles.videoPlaceholder}>
-            <Text style={styles.placeholderText}>🎬</Text>
-            <Text style={styles.placeholderSubtext}>Video {index + 1}</Text>
-          </View>
-        )}
-        <View style={styles.videoOverlay}>
-          <Text style={styles.caption}>{item.caption || 'Videos de ustedes'}</Text>
-        </View>
-      </View>
-    );
-  };
+  const renderVideo = ({ item, index }: { item: VideoItem; index: number }) => (
+    <VideoListItem 
+      item={item} 
+      isVisible={index === currentIndex} 
+    />
+  );
 
   const viewabilityConfig = {
     itemVisiblePercentThreshold: 50,
