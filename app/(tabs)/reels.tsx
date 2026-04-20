@@ -1,9 +1,8 @@
-import { View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoPlayer, useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
 
@@ -30,7 +29,30 @@ function VideoListItem({ item, isVisible }: { item: VideoItem; isVisible: boolea
   }, [isVisible, player]);
   
   return (
-    <View style={styles.videoContainer}>
+    <Pressable 
+      style={styles.videoContainer}
+      onLongPress={() => {
+        Alert.alert(
+          '¿Eliminar archivo?',
+          'Esta acción no se puede deshacer.',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { 
+              text: 'Eliminar', 
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  await deleteFile(item.path);
+                  await deleteDoc(doc(db, 'videos', item.id));
+                } catch (error) {
+                  console.error('Error deleting video:', error);
+                }
+              }
+            },
+          ]
+        );
+      }}
+    >
       {isVisible ? (
         <VideoView
           player={player}
@@ -48,7 +70,7 @@ function VideoListItem({ item, isVisible }: { item: VideoItem; isVisible: boolea
       <View style={styles.videoOverlay}>
         <Text style={styles.caption}>{item.caption || 'Videos de ustedes'}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 

@@ -461,7 +461,30 @@ export default function FeedScreen() {
   };
 
   const renderPhoto = ({ item }: { item: Photo }) => (
-    <View style={styles.photoContainer}>
+    <Pressable 
+      style={styles.photoContainer} 
+      onLongPress={() => {
+        Alert.alert(
+          '¿Eliminar archivo?',
+          'Esta acción no se puede deshacer.',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { 
+              text: 'Eliminar', 
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  await deleteFile(item.path);
+                  await deleteDoc(doc(db, 'fotos', item.id));
+                } catch (error) {
+                  console.error('Error deleting photo:', error);
+                }
+              }
+            },
+          ]
+        );
+      }}
+    >
       <View style={styles.photoHeader}>
         <View style={styles.avatar} />
         <Text style={styles.username}>RebeDari</Text>
@@ -479,7 +502,7 @@ export default function FeedScreen() {
       <View style={styles.photoFooter}>
         <Text style={styles.caption}>{item.caption || 'Fotos de ustedes'}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 
   return (
@@ -584,11 +607,12 @@ const styles = StyleSheet.create({
     minHeight: 60,
     paddingVertical: 12,
     paddingHorizontal: 12,
-    backgroundColor: 'rgba(255, 182, 193, 0.4)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 15,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
+    borderColor: 'rgba(255, 107, 157, 0.3)',
     justifyContent: 'center',
+    marginHorizontal: 4,
   },
   cardButtonText: {
     fontSize: 12,

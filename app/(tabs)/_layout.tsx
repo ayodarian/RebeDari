@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingBottom: 10,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
+    backgroundColor: 'transparent',
   },
   headerTitle: {
     fontSize: 28,
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
   },
   dock: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 183, 197, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 25,
     height: 70,
     alignItems: 'center',
