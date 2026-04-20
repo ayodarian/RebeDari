@@ -497,7 +497,7 @@ export default function FeedScreen() {
         style={styles.panelScroll}
         contentContainerStyle={styles.panelContent}
       >
-        <CardButton title="1. Cápsula \n del tiempo" onPress={() => openModal('capsula')} />
+        <CardButton title="2 años..." onPress={() => openModal('capsula')} />
         <CardButton title="2. Ábrelo cuando..." onPress={() => openModal('abrlo')} />
         <CardButton title="3. Bitácora" onPress={() => openModal('bitacora')} />
       </ScrollView>
@@ -580,9 +580,9 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   cardButton: {
-    width: 160,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    width: 90,
+    paddingVertical: 12,
+    paddingHorizontal: 15,
     backgroundColor: 'rgba(255, 182, 193, 0.4)',
     borderRadius: 15,
     borderWidth: 1,
@@ -590,7 +590,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   cardButtonText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: '#333333',
     textAlign: 'center',

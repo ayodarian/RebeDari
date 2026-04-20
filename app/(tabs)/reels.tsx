@@ -1,8 +1,9 @@
-import { View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoPlayer, useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
 
@@ -36,26 +37,29 @@ export default function ReelsScreen() {
     return () => unsubscribe();
   }, []);
 
-  const pickVideo = async () => {
+const pickVideo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['videos'],
       allowsEditing: true,
-      quality: 0.8,
+      quality: ImagePicker.UIImagePickerControllerQualityType.Low,
+      videoMaxDuration: 60,
     });
 
     if (!result.canceled && result.assets[0]) {
       setUploading(true);
+      const tempUri = result.assets[0].uri;
+      
       try {
         const timestamp = Date.now();
         const path = `videos/${timestamp}.mp4`;
-        const url = await uploadFile(result.assets[0].uri, path);
+        const url = await uploadFile(tempUri, path);
         
         await addDoc(collection(db, 'videos'), {
           url,
           path,
           caption: '',
           created_at: new Date().toISOString(),
-        };
+        });
         
         alert('Video subido correctamente');
       } catch (error) {
@@ -63,6 +67,11 @@ export default function ReelsScreen() {
         console.error(error);
       } finally {
         setUploading(false);
+        try {
+          await FileSystem.deleteAsync(tempUri, { idempotent: true });
+        } catch (cacheError) {
+          console.log('Cache cleanup skipped:', cacheError);
+        }
       }
     }
   };
@@ -90,16 +99,19 @@ export default function ReelsScreen() {
   };
 
   const renderVideo = ({ item, index }: { item: VideoItem; index: number }) => {
-    const player = useVideoPlayer(item.url, (player) => {
-      player.loop = true;
-      player.play();
-    });
+    const isVisible = index === currentIndex;
+    const player = isVisible 
+      ? useVideoPlayer(item.url, (p) => {
+          p.loop = true;
+          p.play();
+        })
+      : null;
 
     return (
       <View style={styles.videoContainer}>
-        {index === currentIndex ? (
+        {isVisible && player ? (
           <VideoView
-            ref={videoRef}
+            ref={index === currentIndex ? videoRef : null}
             player={player}
             style={styles.videoPlayer}
             resizeMode="cover"
@@ -123,6 +135,12 @@ export default function ReelsScreen() {
     itemVisiblePercentThreshold: 50,
   };
 
+  const handleViewabilityChange = ({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setCurrentIndex(viewableItems[0].index);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {uploading && (
@@ -144,11 +162,7 @@ export default function ReelsScreen() {
         snapToInterval={height * 0.6}
         snapToAlignment="start"
         decelerationRate="fast"
-        onViewableItemsChanged={({ viewableItems }: any) => {
-          if (viewableItems.length > 0) {
-            setCurrentIndex(viewableItems[0].index);
-          }
-        }}
+        onViewableItemsChanged={handleViewabilityChange}
         viewabilityConfig={viewabilityConfig}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -156,6 +170,10 @@ export default function ReelsScreen() {
             <Text style={styles.emptySubtext}>Toca + para subir un video</Text>
           </View>
         }
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={1}
+        windowSize={3}
+        initialNumToRender={1}
       />
       
       <TouchableOpacity style={styles.floatingButton} onPress={pickVideo}>
