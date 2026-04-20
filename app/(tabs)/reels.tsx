@@ -1,7 +1,7 @@
-import { View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, Image, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import { VideoPlayer, useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
@@ -21,7 +21,7 @@ export default function ReelsScreen() {
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const videoRef = useRef<Video>(null);
+  const videoRef = useRef<VideoView>(null);
 
   useEffect(() => {
     const videosQuery = query(collection(db, 'videos'), orderBy('created_at', 'desc'));
@@ -36,18 +36,9 @@ export default function ReelsScreen() {
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    const playCurrentVideo = async () => {
-      if (videoRef.current) {
-        await videoRef.current.unloadAsync();
-      }
-    };
-    playCurrentVideo();
-  }, [currentIndex]);
-
   const pickVideo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ['videos'],
       allowsEditing: true,
       quality: 0.8,
     });
@@ -64,7 +55,7 @@ export default function ReelsScreen() {
           path,
           caption: '',
           created_at: new Date().toISOString(),
-        });
+        };
         
         alert('Video subido correctamente');
       } catch (error) {
@@ -98,34 +89,35 @@ export default function ReelsScreen() {
     );
   };
 
-  const renderVideo = ({ item, index }: { item: VideoItem; index: number }) => (
-    <View style={styles.videoContainer}>
-      {index === currentIndex ? (
-        <Video
-          ref={videoRef}
-          source={{ uri: item.url }}
-          style={styles.videoPlayer}
-          resizeMode={ResizeMode.COVER}
-          isLooping
-          shouldPlay
-          useNativeControls
-          onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
-            if (status.isLoaded && status.didJustFinish) {
-              status.setIsLooping(true);
-            }
-          }}
-        />
-      ) : (
-        <View style={styles.videoPlaceholder}>
-          <Text style={styles.placeholderText}>🎬</Text>
-          <Text style={styles.placeholderSubtext}>Video {index + 1}</Text>
+  const renderVideo = ({ item, index }: { item: VideoItem; index: number }) => {
+    const player = useVideoPlayer(item.url, (player) => {
+      player.loop = true;
+      player.play();
+    });
+
+    return (
+      <View style={styles.videoContainer}>
+        {index === currentIndex ? (
+          <VideoView
+            ref={videoRef}
+            player={player}
+            style={styles.videoPlayer}
+            resizeMode="cover"
+            isLooping
+            shouldPlay
+          />
+        ) : (
+          <View style={styles.videoPlaceholder}>
+            <Text style={styles.placeholderText}>🎬</Text>
+            <Text style={styles.placeholderSubtext}>Video {index + 1}</Text>
+          </View>
+        )}
+        <View style={styles.videoOverlay}>
+          <Text style={styles.caption}>{item.caption || 'Videos de ustedes'}</Text>
         </View>
-      )}
-      <View style={styles.videoOverlay}>
-        <Text style={styles.caption}>{item.caption || 'Videos de ustedes'}</Text>
       </View>
-    </View>
-  );
+    );
+  };
 
   const viewabilityConfig = {
     itemVisiblePercentThreshold: 50,

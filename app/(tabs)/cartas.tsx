@@ -1,7 +1,8 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity, ActivityIndicator, Alert, Linking } from 'react-native';
 import { useState, useEffect } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileViewer from 'expo-file-viewer';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
 
@@ -75,12 +76,22 @@ export default function CartasScreen() {
 
   const abrirCarta = async (carta: Carta) => {
     try {
-      await FileViewer.open(carta.url, {
-        title: carta.titulo,
-      });
+      const isAvailable = await Sharing.isAvailableAsync();
+      
+      if (isAvailable) {
+        const fileUri = FileSystem.cacheDirectory + `${carta.titulo}.pdf`;
+        const downloadResult = await FileSystem.downloadAsync(carta.url, fileUri);
+        await Sharing.shareAsync(downloadResult.uri);
+      } else {
+        await Linking.openURL(carta.url);
+      }
     } catch (error) {
-      Alert.alert('Error', 'No se pudo abrir el archivo');
-      console.error(error);
+      try {
+        await Linking.openURL(carta.url);
+      } catch (linkError) {
+        Alert.alert('Error', 'No se pudo abrir el archivo');
+        console.error(linkError);
+      }
     }
   };
 
