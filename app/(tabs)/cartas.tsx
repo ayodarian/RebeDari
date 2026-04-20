@@ -1,57 +1,140 @@
-import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native';
-import { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity, ActivityIndicator, Alert, Linking } from 'react-native';
+import { useState, useEffect } from 'react';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileViewer from 'expo-file-viewer';
+import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
+import { db, uploadFile, deleteFile } from '../../lib/firebase';
 
-interface DocumentoCarta {
+interface Carta {
   id: string;
   titulo: string;
+  url: string;
+  path: string;
   remitente: string;
   fecha: string;
+  created_at: string;
 }
-
-const documentosLebebe: DocumentoCarta[] = [
-  { id: '1', titulo: 'Carta de Aniversario', remitente: 'De Darian para Rebeca', fecha: '12 Dic 2025' },
-  { id: '2', titulo: 'Mi Primer Amor', remitente: 'De Darian para Rebeca', fecha: '14 Feb 2025' },
-  { id: '3', titulo: 'Te Extraño', remitente: 'De Rebeca para Darian', fecha: '5 Mar 2026' },
-  { id: '4', titulo: 'Carta de San Valentín', remitente: 'De Darian para Rebeca', fecha: '14 Feb 2026' },
-];
-
-const documentosDarian: DocumentoCarta[] = [
-  { id: '1', titulo: 'Carta de Cumpleaños', remitente: 'De Rebeca para Darian', fecha: '15 Jun 2025' },
-  { id: '2', titulo: 'Mensaje Especial', remitente: 'De Rebeca para Darian', fecha: '20 Jul 2025' },
-  { id: '3', titulo: 'Te Amo', remitente: 'De Rebeca para Darian', fecha: '10 Oct 2025' },
-];
 
 export default function CartasScreen() {
   const [pestanaActiva, setPestanaActiva] = useState<'Lebebe' | 'Darian'>('Lebebe');
+  const [cartas, setCartas] = useState<Carta[]>([]);
+  const [uploading, setUploading] = useState(false);
 
-  const documentos = pestanaActiva === 'Lebebe' ? documentosLebebe : documentosDarian;
+  useEffect(() => {
+    const cartasQuery = query(
+      collection(db, 'cartas'),
+      where('remitente', '==', pestanaActiva),
+      orderBy('created_at', 'desc')
+    );
+    
+    const unsubscribe = onSnapshot(cartasQuery, (snapshot) => {
+      const cartasData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Carta[];
+      setCartas(cartasData);
+    });
 
-  const abrirDocumento = (documento: DocumentoCarta) => {
-    console.log('Abrir documento:', documento.titulo);
+    return () => unsubscribe();
+  }, [pestanaActiva]);
+
+  const uploadCarta = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCache: true,
+      });
+
+      if (!result.canceled && result.file) {
+        setUploading(true);
+        
+        const timestamp = Date.now();
+        const path = `cartas/${pestanaActiva}/${timestamp}.pdf`;
+        const url = await uploadFile(result.uri, path);
+        
+        const titulo = result.name.replace('.pdf', '');
+        
+        await addDoc(collection(db, 'cartas'), {
+          titulo,
+          url,
+          path,
+          remitente: pestanaActiva,
+          fecha: new Date().toLocaleDateString('es-MX'),
+          created_at: new Date().toISOString(),
+        });
+        
+        Alert.alert('Éxito', 'Carta subida correctamente');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo subir la carta');
+      console.error(error);
+    } finally {
+      setUploading(false);
+    }
   };
 
-  const renderTarjeta = (documento: DocumentoCarta) => (
-    <Pressable
-      key={documento.id}
+  const abrirCarta = async (carta: Carta) => {
+    try {
+      await FileViewer.open(carta.url, {
+        title: carta.titulo,
+      });
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo abrir el archivo');
+      console.error(error);
+    }
+  };
+
+  const eliminarCarta = async (carta: Carta) => {
+    Alert.alert(
+      'Eliminar Carta',
+      '¿Estás seguro?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: 'Eliminar', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteFile(carta.path);
+              await deleteDoc(doc(db, 'cartas', carta.id));
+            } catch (error) {
+              console.error('Error deleting carta:', error);
+            }
+          }
+        },
+      ]
+    );
+  };
+
+  const renderTarjeta = (carta: Carta) => (
+    <TouchableOpacity
+      key={carta.id}
       style={styles.tarjeta}
-      onPress={() => abrirDocumento(documento)}
+      onPress={() => abrirCarta(carta)}
+      onLongPress={() => eliminarCarta(carta)}
     >
-      <Image
-        source={require('../../assets/icon-carta.png')}
-        style={styles.tarjetaIcono}
-      />
+      <View style={styles.tarjetaIcono}>
+        <Text style={styles.tarjetaIconText}>📄</Text>
+      </View>
       <View style={styles.tarjetaContent}>
-        <Text style={styles.tarjetaTitulo}>{documento.titulo}</Text>
+        <Text style={styles.tarjetaTitulo}>{carta.titulo}</Text>
         <Text style={styles.tarjetaSubtitulo}>
-          {documento.remitente} • {documento.fecha}
+          {carta.fecha}
         </Text>
       </View>
-    </Pressable>
+    </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      {uploading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#FF6B9D" />
+          <Text style={styles.loadingText}>Subiendo carta...</Text>
+        </View>
+      )}
+      
+      <View style={[styles.header, { paddingTop: 5 }]}>
         <Text style={styles.title}>Cartas</Text>
       </View>
       
@@ -79,13 +162,19 @@ export default function CartasScreen() {
         contentContainerStyle={styles.listaContent}
         showsVerticalScrollIndicator={false}
       >
-        {documentos.map(renderTarjeta)}
-        {documentos.length === 0 && (
+        {cartas.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Sin documentos todavía</Text>
+            <Text style={styles.emptyText}>Sin cartas</Text>
+            <Text style={styles.emptySubtext}>Toca + para subir un PDF</Text>
           </View>
+        ) : (
+          cartas.map(renderTarjeta)
         )}
       </ScrollView>
+      
+      <TouchableOpacity style={styles.floatingButton} onPress={uploadCarta}>
+        <Text style={styles.floatingButtonText}>+</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -96,7 +185,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   header: {
-    paddingTop: 5,
     paddingBottom: 10,
     paddingHorizontal: 15,
   },
@@ -125,26 +213,27 @@ const styles = StyleSheet.create({
   },
   pestanaTexto: {
     fontSize: 14,
-    fontWeight: '600',
     color: '#666666',
+    fontWeight: '500',
   },
   pestanaTextoActivo: {
-    color: '#FFFFFF',
+    color: '#333333',
+    fontWeight: '600',
   },
   lista: {
     flex: 1,
   },
   listaContent: {
     paddingHorizontal: 15,
-    paddingBottom: 20,
+    paddingBottom: 120,
   },
   tarjeta: {
     flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 15,
     padding: 15,
     marginBottom: 12,
-    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
@@ -154,7 +243,14 @@ const styles = StyleSheet.create({
   tarjetaIcono: {
     width: 40,
     height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 182, 193, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 12,
+  },
+  tarjetaIconText: {
+    fontSize: 20,
   },
   tarjetaContent: {
     flex: 1,
@@ -162,12 +258,12 @@ const styles = StyleSheet.create({
   tarjetaTitulo: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000000',
-    marginBottom: 4,
+    color: '#333333',
   },
   tarjetaSubtitulo: {
     fontSize: 12,
     color: '#8E8E93',
+    marginTop: 2,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -175,7 +271,46 @@ const styles = StyleSheet.create({
     paddingTop: 50,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#8E8E93',
+    fontWeight: '600',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#8E8E93',
+    marginTop: 5,
+  },
+  floatingButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 130,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FF6B9D',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  floatingButtonText: {
+    fontSize: 30,
+    color: '#FFFFFF',
+    fontWeight: '300',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#FF6B9D',
   },
 });
