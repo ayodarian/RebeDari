@@ -1,6 +1,6 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter, usePathname } from 'expo-router';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { View, Text, StyleSheet, Pressable, Image, TouchableOpacity } from 'react-native';
-import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { useAppStore } from '../../store/index';
@@ -106,11 +106,59 @@ const tabs = [
   { name: 'dedos', label: 'Dedos', icon: require('../../assets/icon-dedos.png') },
 ];
 
-function CustomTabBar() {
-  const router = useRouter();
+function CustomTabBar({ state, descriptors, navigation }: any) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={[styles.dockContainer, { paddingBottom: insets.bottom + 16 }]}>
+      <View style={styles.dock}>
+        {state.routes.map((route: any, index: number) => {
+          const { options } = descriptors[route.key];
+          const isFocused = state.index === index;
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name);
+            }
+          };
+
+          const tabConfig = tabs.find(t => t.name === route.name);
+          const icon = tabConfig?.icon || tabConfig?.icon;
+          const label = tabConfig?.label || route.name;
+
+          return (
+            <Pressable
+              key={route.key}
+              style={styles.dockItem}
+              onPress={onPress}
+            >
+              {icon && (
+                <Image
+                  source={icon}
+                  style={[styles.dockIcon, isFocused && styles.dockIconFocused]}
+                />
+              )}
+              <Text style={[styles.dockLabel, isFocused && styles.dockLabelFocused]}>
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+export default function TabLayout() {
   const pathname = usePathname();
 
-  const getCurrentIndex = () => {
+  const getActiveIndex = () => {
     if (pathname.includes('/reels')) return 1;
     if (pathname.includes('/cartas')) return 2;
     if (pathname.includes('/bingo')) return 3;
@@ -118,11 +166,65 @@ function CustomTabBar() {
     return 0;
   };
 
-  const currentIndex = getCurrentIndex();
+  return (
+    <GestureHandlerRootView style={styles.container}>
+      <GlobalHeader />
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarStyle: { display: 'none' },
+          animation: 'none',
+        }}
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            href: '/(tabs)',
+          }}
+        />
+        <Tabs.Screen
+          name="reels"
+          options={{
+            href: '/(tabs)/reels',
+          }}
+        />
+        <Tabs.Screen
+          name="cartas"
+          options={{
+            href: '/(tabs)/cartas',
+          }}
+        />
+        <Tabs.Screen
+          name="bingo"
+          options={{
+            href: '/(tabs)/bingo',
+          }}
+        />
+        <Tabs.Screen
+          name="dedos"
+          options={{
+            href: '/(tabs)/dedos',
+          }}
+        />
+      </Tabs>
+      <CustomTabBarWrapper />
+    </GestureHandlerRootView>
+  );
+}
 
-  const navigateTo = (path: string) => {
-    router.replace(path as any);
+function CustomTabBarWrapper() {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const getActiveIndex = () => {
+    if (pathname.includes('/reels')) return 1;
+    if (pathname.includes('/cartas')) return 2;
+    if (pathname.includes('/bingo')) return 3;
+    if (pathname.includes('/dedos')) return 4;
+    return 0;
   };
+
+  const currentIndex = getActiveIndex();
 
   return (
     <View style={styles.dockContainer}>
@@ -135,7 +237,7 @@ function CustomTabBar() {
               style={styles.dockItem}
               onPress={() => {
                 const route = tab.name === 'index' ? '/(tabs)' : `/(tabs)/${tab.name}`;
-                navigateTo(route);
+                router.replace(route as any);
               }}
             >
               <Image
@@ -149,29 +251,6 @@ function CustomTabBar() {
           );
         })}
       </View>
-    </View>
-  );
-}
-
-export default function TabLayout() {
-  return (
-    <View style={styles.container}>
-      <GlobalHeader />
-      <View style={styles.content}>
-        <Tabs
-          screenOptions={{
-            headerShown: false,
-            tabBarStyle: { display: 'none' },
-          }}
-        >
-          <Tabs.Screen name="index" />
-          <Tabs.Screen name="reels" />
-          <Tabs.Screen name="cartas" />
-          <Tabs.Screen name="bingo" />
-          <Tabs.Screen name="dedos" />
-        </Tabs>
-      </View>
-      <CustomTabBar />
     </View>
   );
 }
@@ -222,24 +301,24 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333333',
   },
-  content: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
-  },
   dockContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 16,
     paddingTop: 4,
     backgroundColor: 'transparent',
   },
   dock: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: 'rgba(255, 220, 225, 0.85)',
     borderRadius: 25,
     height: 50,
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingHorizontal: 10,
+    shadowColor: '#FF6B9D',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
   },
   dockItem: {
     alignItems: 'center',

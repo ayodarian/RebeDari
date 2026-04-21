@@ -1,8 +1,10 @@
-import { View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, Alert, Pressable, TextInput, Modal } from 'react-native';
-import { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, Alert, Pressable, TextInput, Modal, Image } from 'react-native';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoPlayer, useVideoPlayer, VideoView } from 'expo-video';
+import Slider from '@react-native-community/slider';
 import * as ImagePicker from 'expo-image-picker';
+import { getInfoAsync } from 'expo-file-system/legacy';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc } from 'firebase/firestore';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
 
@@ -33,14 +35,93 @@ function VideoListItem({
 }) {
   const player = useVideoPlayer(item.url);
   
+  const [isPaused, setIsPaused] = useState(false);
+  const [showControls, setShowControls] = useState(false);
+  const [showSlider, setShowSlider] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sliderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const formatTime = (seconds: number) => {
+    if (seconds === null || seconds === undefined || isNaN(seconds)) {
+      return '00:00';
+    }
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const hideControlsAfterDelay = useCallback(() => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+    }
+    hideTimeoutRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 1000);
+  }, []);
+
+  const togglePlayPause = useCallback(() => {
+    if (isPaused) {
+      player.play();
+      setIsPaused(false);
+    } else {
+      player.pause();
+      setIsPaused(true);
+    }
+    setShowControls(true);
+    hideControlsAfterDelay();
+  }, [isPaused, player, hideControlsAfterDelay]);
+
+  const showSliderWithTimeout = useCallback(() => {
+    setShowSlider(true);
+    if (sliderTimeoutRef.current) {
+      clearTimeout(sliderTimeoutRef.current);
+    }
+    sliderTimeoutRef.current = setTimeout(() => {
+      setShowSlider(false);
+    }, 1000);
+  }, []);
+
   useEffect(() => {
     if (isVisible) {
       player.loop = true;
       player.play();
+      setIsPaused(false);
+      setShowControls(false);
+      setShowSlider(false);
     } else {
       player.pause();
+      setShowControls(false);
+      setShowSlider(false);
     }
   }, [isVisible, player]);
+
+  
+
+  useEffect(() => {
+    if (!player) return;
+    
+    player.timeUpdateEventInterval = 1;
+    
+    const timer = setTimeout(() => {
+      if (player.duration > 0) {
+        setDuration(player.duration);
+      }
+    }, 300);
+    
+    const subscription = player.addListener('timeUpdate', (event: any) => {
+      setCurrentTime(event.currentTime);
+      if (player.duration > 0) {
+        setDuration(player.duration);
+      }
+    });
+
+    return () => {
+      clearTimeout(timer);
+      subscription.remove();
+    };
+  }, [player]);
 
   const getTimeAgo = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -109,13 +190,51 @@ function VideoListItem({
         )}
       </View>
       {isVisible ? (
-        <VideoView
-          player={player}
-          style={styles.videoPlayer}
-          resizeMode="cover"
-          isLooping
-          shouldPlay
-        />
+        <View style={styles.videoWrapper}>
+          <VideoView
+            player={player}
+            style={styles.videoPlayer}
+            contentFit="cover"
+            nativeControls={false}
+          />
+          <Pressable 
+            onPress={togglePlayPause} 
+            style={styles.videoTouchOverlay}
+          />
+          {showControls && (
+            <View style={styles.playPauseOverlay}>
+              <Image 
+                source={require('../../assets/pasue.png')}
+                style={styles.pauseIconImage}
+              />
+            </View>
+          )}
+          {showSlider && (
+            <View style={styles.videoControls}>
+              <Slider
+                style={styles.slider}
+minimumValue={0}
+              maximumValue={duration > 0 ? duration : 1}
+                value={currentTime}
+                onSlidingComplete={(value) => {
+                  player.currentTime = value;
+                  setCurrentTime(value);
+                  hideControlsAfterDelay();
+                }}
+                minimumTrackTintColor="#FF6B9D"
+                maximumTrackTintColor="#E0E0E0"
+                thumbTintColor="#FF6B9D"
+              />
+              <Text style={styles.timeText}>
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </Text>
+            </View>
+          )}
+          <Pressable 
+            onPress={showSliderWithTimeout}
+            style={styles.sliderZone}
+          />
+        </View>
       ) : (
         <View style={styles.videoPlaceholder}>
           <Text style={styles.placeholderText}>🎬</Text>
@@ -138,6 +257,7 @@ export default function ReelsScreen() {
   const [videoOptionsId, setVideoOptionsId] = useState<string | null>(null);
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
   const [editingCaption, setEditingCaption] = useState('');
+  const [actionModalVisible, setActionModalVisible] = useState(false);
 
   useEffect(() => {
     const videosQuery = query(collection(db, 'videos'), orderBy('created_at', 'desc'));
@@ -155,14 +275,36 @@ export default function ReelsScreen() {
   const pickVideo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['videos'],
-      allowsEditing: true,
+      allowsEditing: false,
       quality: ImagePicker.UIImagePickerControllerQualityType.Low,
-      videoMaxDuration: 60,
+      videoMaxDuration: 300,
     });
 
     if (!result.canceled && result.assets[0]) {
+      const videoAsset = result.assets[0];
+      if (videoAsset.duration && videoAsset.duration > 300000) {
+        alert('El video no puede superar los 5 minutos');
+        return;
+      }
+      
       setUploading(true);
-      const tempUri = result.assets[0].uri;
+      const tempUri = videoAsset.uri;
+      
+      let fileSize = 0;
+      try {
+        const fileInfo = await getInfoAsync(tempUri);
+        if (fileInfo.exists && 'size' in fileInfo) {
+          fileSize = (fileInfo as { size: number }).size;
+        }
+      } catch (fileError) {
+        console.warn('No se pudo verificar el tamaño del archivo');
+      }
+
+      if (fileSize > 100 * 1024 * 1024) {
+        alert('El video es demasiado pesado (máx 100MB)');
+        setUploading(false);
+        return;
+      }
       
       try {
         const timestamp = Date.now();
@@ -186,8 +328,20 @@ export default function ReelsScreen() {
     }
   };
 
+  const shuffleVideos = () => {
+    const shuffled = [...videos].sort(() => Math.random() - 0.5);
+    setVideos(shuffled);
+  };
+
+  const openActionModal = () => setActionModalVisible(true);
+  const closeActionModal = () => setActionModalVisible(false);
+  const handleVideoAction = (action: () => void) => {
+    closeActionModal();
+    action();
+  };
+
   const deleteVideo = async (video: VideoItem) => {
-    alert(
+    Alert.alert(
       'Eliminar Video',
       '¿Estás seguro?',
       [
@@ -264,7 +418,7 @@ export default function ReelsScreen() {
         initialNumToRender={1}
       />
       
-      <TouchableOpacity style={styles.floatingButton} onPress={pickVideo}>
+      <TouchableOpacity style={styles.floatingButton} onPress={openActionModal}>
         <Text style={styles.floatingButtonText}>+</Text>
       </TouchableOpacity>
 
@@ -307,6 +461,28 @@ export default function ReelsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={actionModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeActionModal}
+      >
+        <Pressable style={styles.actionModalOverlay} onPress={closeActionModal}>
+          <Pressable style={styles.actionModalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.actionModalTitle}>Agregar contenido</Text>
+            <Pressable style={styles.actionButton} onPress={() => handleVideoAction(pickVideo)}>
+              <Text style={styles.actionButtonText}>🎬 Subir video</Text>
+            </Pressable>
+            <Pressable style={styles.actionButton} onPress={() => handleVideoAction(shuffleVideos)}>
+              <Text style={styles.actionButtonText}>🔀 Mezclar contenido</Text>
+            </Pressable>
+            <Pressable style={styles.actionCancelButton} onPress={closeActionModal}>
+              <Text style={styles.actionCancelText}>Cancelar</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -338,16 +514,25 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  videoWrapper: {
+    width: '100%',
+    aspectRatio: 9 / 16,
+    position: 'relative',
+  },
   videoPlayer: {
     width: '100%',
-    aspectRatio: 1,
+    height: '100%',
   },
   videoPlaceholder: {
     width: '100%',
-    aspectRatio: 1,
+    aspectRatio: 9 / 16,
     backgroundColor: '#1A1A1A',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  videoTouchOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
   },
   placeholderText: {
     fontSize: 60,
@@ -548,5 +733,94 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  playPauseOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
+  },
+  playPauseIcon: {
+    fontSize: 60,
+  },
+  videoControls: {
+    position: 'absolute',
+    bottom: 50,
+    left: 12,
+    right: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    zIndex: 20,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+  },
+  timeText: {
+    fontSize: 12,
+    color: '#666666',
+    textAlign: 'center',
+    marginTop: -5,
+  },
+  pauseIconImage: {
+    width: 60,
+    height: 60,
+    resizeMode: 'contain',
+    opacity: 0.9,
+  },
+  sliderZone: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+    zIndex: 15,
+  },
+  actionModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  actionModalCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    padding: 25,
+    paddingBottom: 40,
+  },
+  actionModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FF6B9D',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  actionButton: {
+    backgroundColor: '#FF6B9D',
+    paddingVertical: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  actionButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  actionCancelButton: {
+    paddingVertical: 16,
+    borderRadius: 16,
+    marginTop: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  actionCancelText: {
+    fontSize: 16,
+    color: '#666666',
   },
 });

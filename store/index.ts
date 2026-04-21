@@ -17,7 +17,8 @@ interface AppState {
   login: (email: string, password: string) => Promise<boolean>;
   register: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  checkAuth: () => void;
+  recoverPassword: (email: string) => Promise<boolean>;
+  checkAuth: () => (() => void) | undefined;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -78,14 +79,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   recoverPassword: async (email: string) => {
-    try {
-      await sendPasswordResetEmail(auth, email);
-      return true;
-    } catch (error: any) {
-      console.error('Recovery error:', error);
-      const errorMessage = error.message || 'Error al recuperar';
-      throw new Error(errorMessage);
-    }
+    await sendPasswordResetEmail(auth, email);
+    return true;
   },
 
   checkAuth: () => {

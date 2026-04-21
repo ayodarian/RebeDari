@@ -21,11 +21,41 @@ export const auth = initializeAuth(app, {
 });
 
 export const uploadFile = async (uri: string, path: string): Promise<string> => {
-  const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
-  const response = await fetch(uri);
-  const blob = await response.blob();
+  const { ref, uploadBytesResumable, getDownloadURL } = await import('firebase/storage');
+  
   const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, blob);
+  
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.responseType = 'blob';
+    xhr.open('GET', uri, true);
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        resolve(xhr.response as Blob);
+      } else {
+        reject(new Error(`Network request failed with status ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => {
+      reject(new Error('Network request failed'));
+    };
+    xhr.send();
+  });
+  
+  const uploadTask = uploadBytesResumable(storageRef, blob, {
+    contentType: 'video/mp4',
+    cacheControl: 'public, max-age=31536000',
+  });
+  
+  await new Promise((resolve, reject) => {
+    uploadTask.on(
+      'state_changed',
+      (snapshot) => {},
+      (error) => reject(error),
+      () => resolve(null)
+    );
+  });
+  
   return await getDownloadURL(storageRef);
 };
 

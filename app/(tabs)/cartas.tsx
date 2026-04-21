@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity, ActivityIndicator, Alert, Linking, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity, ActivityIndicator, Alert, Linking, TextInput, Modal, Dimensions } from 'react-native';
+
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useState, useEffect } from 'react';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -15,6 +16,7 @@ interface Carta {
   remitente: string;
   fecha: string;
   fechaEscritura?: string;
+  description: string;
   favorita?: boolean;
   created_at: string;
 }
@@ -31,6 +33,8 @@ export default function CartasScreen() {
   const [cartaOptionsId, setCartaOptionsId] = useState<string | null>(null);
   const [editingCartaId, setEditingCartaId] = useState<string | null>(null);
   const [editingTitulo, setEditingTitulo] = useState('');
+  const [descripcionTemp, setDescripcionTemp] = useState('');
+  const [previewCarta, setPreviewCarta] = useState<Carta | null>(null);
 
   useEffect(() => {
     const cartasQuery = query(
@@ -78,6 +82,7 @@ export default function CartasScreen() {
       if (!result.canceled && result.assets && result.assets[0]) {
         setPendingUpload({ uri: result.assets[0].uri, name: result.assets[0].name });
         setFechaEscrituraTemp('');
+        setDescripcionTemp('');
         setFechaModalOpen(true);
       }
     } catch (error) {
@@ -90,6 +95,10 @@ export default function CartasScreen() {
   const confirmarUpload = async () => {
     if (!pendingUpload || !fechaEscrituraTemp.trim()) {
       Alert.alert('Error', 'Por favor ingresa la fecha de escritura');
+      return;
+    }
+    if (!descripcionTemp.trim()) {
+      Alert.alert('Error', 'Por favor ingresa una descripción');
       return;
     }
 
@@ -110,6 +119,7 @@ export default function CartasScreen() {
         remitente: pestanaActiva,
         fecha: new Date().toLocaleDateString('es-MX'),
         fechaEscritura: fechaEscrituraTemp,
+        description: descripcionTemp.trim(),
         favorita: false,
         created_at: new Date().toISOString(),
       });
@@ -123,6 +133,7 @@ export default function CartasScreen() {
       setUploading(false);
       setPendingUpload(null);
       setFechaEscrituraTemp('');
+      setDescripcionTemp('');
     }
   };
 
@@ -136,13 +147,8 @@ export default function CartasScreen() {
     }
   };
 
-  const abrirCarta = async (carta: Carta) => {
-    try {
-      await Linking.openURL(carta.url);
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo abrir el archivo');
-      console.error(error);
-    }
+  const abrirCarta = (carta: Carta) => {
+    setPreviewCarta(carta);
   };
 
   const eliminarCarta = async (carta: Carta) => {
@@ -323,6 +329,16 @@ export default function CartasScreen() {
               placeholder="Ej: 25/01/2025"
               placeholderTextColor="#8E8E93"
             />
+            <Text style={styles.modalSubtitle}>Descripción</Text>
+            <TextInput
+              style={[styles.fechaInput, styles.descripcionInput]}
+              value={descripcionTemp}
+              onChangeText={setDescripcionTemp}
+              placeholder="Escribe una descripción..."
+              placeholderTextColor="#8E8E93"
+              multiline
+              numberOfLines={4}
+            />
             <View style={styles.modalButtons}>
               <Pressable style={styles.cancelButton} onPress={() => { setFechaModalOpen(false); setPendingUpload(null); }}>
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
@@ -371,6 +387,63 @@ export default function CartasScreen() {
                 <Text style={styles.saveButtonText}>Guardar</Text>
               </Pressable>
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={previewCarta !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewCarta(null)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setPreviewCarta(null)}>
+          <Pressable style={styles.previewModalCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.previewHeader}>
+              <Text style={styles.previewTitle} numberOfLines={1}>{previewCarta?.titulo}</Text>
+              <TouchableOpacity onPress={() => setPreviewCarta(null)} style={styles.closeButton}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.previewContent}>
+              <TouchableOpacity 
+                style={styles.previewDocumento}
+                onPress={() => {
+                  setPreviewCarta(null);
+                  if (previewCarta?.url) {
+                    Linking.openURL(previewCarta.url);
+                  }
+                }}
+              >
+                <Text style={styles.previewPdfIcon}>📄</Text>
+                <Text style={styles.previewPdfName} numberOfLines={2}>{previewCarta?.titulo}</Text>
+                <Text style={styles.previewPdfTap}>Toca para ver</Text>
+              </TouchableOpacity>
+              
+              <ScrollView style={styles.previewDescripcion} showsVerticalScrollIndicator={false}>
+                <Text style={styles.previewDescripcionLabel}>Descripción</Text>
+                <Text style={styles.previewDescripcionText}>
+                  {previewCarta?.description || 'Sin descripción'}
+                </Text>
+                <Text style={[styles.previewDescripcionLabel, { marginTop: 15 }]}>Fecha</Text>
+                <Text style={styles.previewDescripcionText}>
+                  {previewCarta?.fechaEscritura || previewCarta?.fecha}
+                </Text>
+              </ScrollView>
+            </View>
+            
+            <Pressable 
+              style={styles.abrirButton} 
+              onPress={() => {
+                setPreviewCarta(null);
+                if (previewCarta?.url) {
+                  Linking.openURL(previewCarta.url);
+                }
+              }}
+            >
+              <Text style={styles.abrirButtonText}>Abrir documento</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
@@ -674,6 +747,101 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  descripcionInput: {
+    backgroundColor: 'rgba(255, 182, 193, 0.25)',
+    minHeight: 100,
+    textAlignVertical: 'top',
+    marginBottom: 15,
+  },
+  previewModalCard: {
+    width: '95%',
+    height: '85%',
+    backgroundColor: 'rgba(255, 245, 248, 0.98)',
+    borderRadius: 20,
+    padding: 15,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 5,
+  },
+  previewTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FF6B9D',
+    flex: 1,
+    marginRight: 10,
+  },
+  closeButton: {
+    padding: 5,
+  },
+  closeButtonText: {
+    fontSize: 24,
+    color: '#FF6B9D',
+    fontWeight: 'bold',
+  },
+  previewContent: {
+    flex: 1,
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  previewDocumento: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginRight: 10,
+    overflow: 'hidden',
+  },
+  pdfViewer: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  previewPdfIcon: {
+    fontSize: 50,
+    marginBottom: 10,
+  },
+  previewPdfName: {
+    fontSize: 12,
+    color: '#333333',
+    textAlign: 'center',
+    marginBottom: 5,
+  },
+  previewPdfTap: {
+    fontSize: 11,
+    color: '#FF6B9D',
+    fontWeight: '600',
+  },
+  previewDescripcion: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 12,
+    padding: 12,
+  },
+  previewDescripcionLabel: {
+    fontSize: 12,
+    color: '#FF6B9D',
+    fontWeight: '600',
+    marginBottom: 5,
+  },
+  previewDescripcionText: {
+    fontSize: 14,
+    color: '#333333',
+    lineHeight: 20,
+  },
+  abrirButton: {
+    backgroundColor: '#FF6B9D',
+    borderRadius: 12,
+    padding: 15,
+    alignItems: 'center',
+  },
+  abrirButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '600',
   },
 });

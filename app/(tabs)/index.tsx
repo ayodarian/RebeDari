@@ -10,6 +10,7 @@ const { width } = Dimensions.get('window');
 interface Photo {
   id: string;
   url: string;
+  path?: string;
   caption: string;
   created_at: string;
 }
@@ -154,6 +155,7 @@ export default function FeedScreen() {
   const [editingPhotoId, setEditingPhotoId] = useState<string | null>(null);
   const [editingCaption, setEditingCaption] = useState('');
   const [photoOptionsId, setPhotoOptionsId] = useState<string | null>(null);
+  const [actionModalVisible, setActionModalVisible] = useState(false);
 
   useEffect(() => {
     const photosQuery = query(collection(db, 'fotos'), orderBy('created_at', 'desc'));
@@ -250,6 +252,18 @@ export default function FeedScreen() {
         setUploading(false);
       }
     }
+  };
+
+  const shufflePhotos = () => {
+    const shuffled = [...photos].sort(() => Math.random() - 0.5);
+    setPhotos(shuffled);
+  };
+
+  const openActionModal = () => setActionModalVisible(true);
+  const closeActionModal = () => setActionModalVisible(false);
+  const handlePhotoAction = (action: () => void) => {
+    closeActionModal();
+    action();
   };
 
   const takePhoto = async () => {
@@ -515,7 +529,7 @@ export default function FeedScreen() {
                         style: 'destructive',
                         onPress: async () => {
                           try {
-                            await deleteFile(item.path);
+                            await deleteFile(item.path || '');
                             await deleteDoc(doc(db, 'fotos', item.id));
                           } catch (error) {
                             console.error('Error deleting photo:', error);
@@ -572,7 +586,7 @@ export default function FeedScreen() {
         onScrollBeginDrag={() => setPhotoOptionsId(null)}
       />
       
-      <TouchableOpacity style={styles.floatingButton} onPress={pickImage}>
+      <TouchableOpacity style={styles.floatingButton} onPress={openActionModal}>
         <Text style={styles.floatingButtonText}>+</Text>
       </TouchableOpacity>
 
@@ -642,6 +656,28 @@ export default function FeedScreen() {
                 <Text style={styles.saveButtonText}>Guardar</Text>
               </Pressable>
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={actionModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeActionModal}
+      >
+        <Pressable style={styles.actionModalOverlay} onPress={closeActionModal}>
+          <Pressable style={styles.actionModalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.actionModalTitle}>Agregar contenido</Text>
+            <Pressable style={styles.actionButton} onPress={() => handlePhotoAction(pickImage)}>
+              <Text style={styles.actionButtonText}>📷 Subir foto</Text>
+            </Pressable>
+            <Pressable style={styles.actionButton} onPress={() => handlePhotoAction(shufflePhotos)}>
+              <Text style={styles.actionButtonText}>🔀 Mezclar contenido</Text>
+            </Pressable>
+            <Pressable style={styles.actionCancelButton} onPress={closeActionModal}>
+              <Text style={styles.actionCancelText}>Cancelar</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1101,5 +1137,50 @@ buttonRow: {
   },
   optionDeleteText: {
     color: '#FF3B30',
+  },
+  actionModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  actionModalCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    padding: 25,
+    paddingBottom: 40,
+  },
+  actionModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FF6B9D',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  actionButton: {
+    backgroundColor: '#FF6B9D',
+    paddingVertical: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  actionButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  actionCancelButton: {
+    paddingVertical: 16,
+    borderRadius: 16,
+    marginTop: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  actionCancelText: {
+    fontSize: 16,
+    color: '#666666',
   },
 });

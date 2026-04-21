@@ -4,12 +4,12 @@
     "slug": "RebeDari",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/adaptive-icon.jpg",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "rebedari",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash-icon.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#FF6B9D"
     },
@@ -19,8 +19,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FF6B9D"
+        "foregroundImage": "./assets/adaptive-icon.jpg",
+        "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.rebedari.app"
@@ -36,6 +36,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7c6a1210-1bd6-4506-a28e-e7310a240f15"
+      }
     }
   }
 }
