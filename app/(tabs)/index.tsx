@@ -514,16 +514,11 @@ export default function FeedScreen() {
         </View>
       )}
       
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        style={styles.panelScroll}
-        contentContainerStyle={styles.panelContent}
-      >
+      <View style={styles.buttonRow}>
         <CardButton title="2 años..." onPress={() => openModal('capsula')} />
         <CardButton title="2. Ábrelo cuando..." onPress={() => openModal('abrlo')} />
         <CardButton title="3. Bitácora" onPress={() => openModal('bitacora')} />
-      </ScrollView>
+      </View>
 
       <FlatList
         data={photos}
@@ -593,26 +588,24 @@ const styles = StyleSheet.create({
     color: '#333333',
     lineHeight: 22,
   },
-  panelScroll: {
-    maxHeight: 70,
-    marginBottom: 5,
-  },
-  panelContent: {
-    paddingHorizontal: 15,
-    gap: 10,
+  buttonRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 10,
     paddingVertical: 5,
+    marginBottom: 5,
+    gap: 6,
   },
   cardButton: {
     flex: 1,
     minHeight: 60,
     paddingVertical: 12,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     backgroundColor: '#FFFFFF',
     borderRadius: 15,
     borderWidth: 1,
     borderColor: 'rgba(255, 107, 157, 0.3)',
     justifyContent: 'center',
-    marginHorizontal: 4,
+    marginHorizontal: 2,
   },
   cardButtonText: {
     fontSize: 12,

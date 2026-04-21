@@ -90,7 +90,7 @@ function CustomTabBar() {
   const currentIndex = getCurrentIndex();
 
   const navigateTo = (path: string) => {
-    router.push(path as any);
+    router.replace(path as any);
   };
 
   return (
@@ -102,7 +102,7 @@ function CustomTabBar() {
             <Pressable
               key={tab.name}
               style={styles.dockItem}
-              onPress={() => navigateTo(`/(tabs)/${tab.name}`)}
+              onPress={() => navigateTo(`/${tab.name}`)}
             >
               <Image
                 source={tab.icon}

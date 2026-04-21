@@ -1,8 +1,9 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity, ActivityIndicator, Alert, Linking } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useState, useEffect } from 'react';
+import { Swipeable } from 'react-native-gesture-handler';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
 
@@ -43,31 +44,37 @@ export default function CartasScreen() {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/pdf',
-        copyToCache: true,
       });
 
-      if (!result.canceled && result.file) {
+      if (!result.canceled && result.assets && result.assets[0]) {
         setUploading(true);
         
         const timestamp = Date.now();
         const path = `cartas/${pestanaActiva}/${timestamp}.pdf`;
-        const url = await uploadFile(result.uri, path);
         
-        const titulo = result.name.replace('.pdf', '');
-        
-        await addDoc(collection(db, 'cartas'), {
-          titulo,
-          url,
-          path,
-          remitente: pestanaActiva,
-          fecha: new Date().toLocaleDateString('es-MX'),
-          created_at: new Date().toISOString(),
-        });
-        
-        Alert.alert('Éxito', 'Carta subida correctamente');
+        try {
+          const url = await uploadFile(result.assets[0].uri, path);
+          const titulo = result.assets[0].name.replace('.pdf', '');
+          
+          await addDoc(collection(db, 'cartas'), {
+            titulo,
+            url,
+            path,
+            remitente: pestanaActiva,
+            fecha: new Date().toLocaleDateString('es-MX'),
+            created_at: new Date().toISOString(),
+          });
+          
+          Alert.alert('Éxito', 'Carta subida correctamente');
+        } catch (uploadError) {
+          const errorMessage = uploadError instanceof Error ? uploadError.message : 'Error desconocido';
+          Alert.alert('Error de subida', `No se pudo subir el archivo. Detalles: ${errorMessage}`);
+          console.error('Upload error:', uploadError);
+        }
       }
     } catch (error) {
-      Alert.alert('Error', 'No se pudo subir la carta');
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      Alert.alert('Error', `No se pudo seleccionar el archivo. Detalles: ${errorMessage}`);
       console.error(error);
     } finally {
       setUploading(false);
@@ -76,29 +83,17 @@ export default function CartasScreen() {
 
   const abrirCarta = async (carta: Carta) => {
     try {
-      const isAvailable = await Sharing.isAvailableAsync();
-      
-      if (isAvailable) {
-        const fileUri = FileSystem.cacheDirectory + `${carta.titulo}.pdf`;
-        const downloadResult = await FileSystem.downloadAsync(carta.url, fileUri);
-        await Sharing.shareAsync(downloadResult.uri);
-      } else {
-        await Linking.openURL(carta.url);
-      }
+      await Linking.openURL(carta.url);
     } catch (error) {
-      try {
-        await Linking.openURL(carta.url);
-      } catch (linkError) {
-        Alert.alert('Error', 'No se pudo abrir el archivo');
-        console.error(linkError);
-      }
+      Alert.alert('Error', 'No se pudo abrir el archivo');
+      console.error(error);
     }
   };
 
   const eliminarCarta = async (carta: Carta) => {
     Alert.alert(
       'Eliminar Carta',
-      '¿Estás seguro?',
+      '¿Estás seguro que deseas eliminar esta carta?',
       [
         { text: 'Cancelar', style: 'cancel' },
         { 
@@ -109,6 +104,7 @@ export default function CartasScreen() {
               await deleteFile(carta.path);
               await deleteDoc(doc(db, 'cartas', carta.id));
             } catch (error) {
+              Alert.alert('Error', 'No se pudo eliminar la carta');
               console.error('Error deleting carta:', error);
             }
           }
@@ -117,26 +113,40 @@ export default function CartasScreen() {
     );
   };
 
-  const renderTarjeta = (carta: Carta) => (
-    <TouchableOpacity
-      key={carta.id}
-      style={styles.tarjeta}
-      onPress={() => abrirCarta(carta)}
-      onLongPress={() => eliminarCarta(carta)}
+  const renderRightActions = (carta: Carta) => (
+    <TouchableOpacity 
+      style={styles.deleteButton} 
+      onPress={() => eliminarCarta(carta)}
     >
-      <View style={styles.tarjetaIcono}>
-        <Text style={styles.tarjetaIconText}>📄</Text>
-      </View>
-      <View style={styles.tarjetaContent}>
-        <Text style={styles.tarjetaTitulo}>{carta.titulo}</Text>
-        <Text style={styles.tarjetaSubtitulo}>
-          {carta.fecha}
-        </Text>
-      </View>
+      <Text style={styles.deleteButtonText}>🗑️</Text>
     </TouchableOpacity>
   );
 
+  const renderTarjeta = (carta: Carta) => (
+    <Swipeable
+      key={carta.id}
+      renderRightActions={() => renderRightActions(carta)}
+      overshootRight={false}
+    >
+      <TouchableOpacity
+        style={styles.tarjeta}
+        onPress={() => abrirCarta(carta)}
+      >
+        <View style={styles.tarjetaIcono}>
+          <Text style={styles.tarjetaIconText}>📄</Text>
+        </View>
+        <View style={styles.tarjetaContent}>
+          <Text style={styles.tarjetaTitulo}>{carta.titulo}</Text>
+          <Text style={styles.tarjetaSubtitulo}>
+            {carta.fecha}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </Swipeable>
+  );
+
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={styles.container}>
       {uploading && (
         <View style={styles.loadingOverlay}>
@@ -187,6 +197,7 @@ export default function CartasScreen() {
         <Text style={styles.floatingButtonText}>+</Text>
       </TouchableOpacity>
     </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -323,5 +334,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     color: '#FF6B9D',
+  },
+  deleteButton: {
+    backgroundColor: '#FF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    marginBottom: 12,
+    borderRadius: 15,
+  },
+  deleteButtonText: {
+    fontSize: 24,
   },
 });
