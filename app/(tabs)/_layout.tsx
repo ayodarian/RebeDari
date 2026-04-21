@@ -1,10 +1,15 @@
 import { Tabs } from 'expo-router';
-import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, TouchableOpacity } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
+import { useAppStore } from '../../store/index';
 
-const START_DATE = new Date(2025, 0, 22, 18, 35, 0);
+const START_DATE = new Date(2025, 0, 22, 6, 30, 0);
+
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
 
 function calculateTimeDiff(start: Date, end: Date): { years: number; months: number; days: number; hours: number; minutes: number } {
   let years = end.getFullYear() - start.getFullYear();
@@ -13,13 +18,26 @@ function calculateTimeDiff(start: Date, end: Date): { years: number; months: num
   let hours = end.getHours() - start.getHours();
   let minutes = end.getMinutes() - start.getMinutes();
 
-  if (minutes < 0) { minutes += 60; hours--; }
-  if (hours < 0) { hours += 24; days--; }
-  if (days < 0) { 
-    const prevMonth = new Date(end.getFullYear(), end.getMonth(), 0);
-    days += prevMonth.getDate(); months--; 
+  if (minutes < 0) {
+    minutes += 60;
+    hours -= 1;
   }
-  if (months < 0) { months += 12; years--; }
+  if (hours < 0) {
+    hours += 24;
+    days -= 1;
+  }
+  if (days < 0) {
+    months -= 1;
+    const prevMonth = end.getMonth() - 1;
+    const prevMonthYear = prevMonth < 0 ? end.getFullYear() - 1 : end.getFullYear();
+    const adjustedMonth = prevMonth < 0 ? 11 : prevMonth;
+    const daysInPrevMonth = getDaysInMonth(prevMonthYear, adjustedMonth);
+    days += daysInPrevMonth;
+  }
+  if (months < 0) {
+    months += 12;
+    years -= 1;
+  }
 
   return { years: Math.abs(years), months: Math.abs(months), days: Math.abs(days), hours: Math.abs(hours), minutes: Math.abs(minutes) };
 }
@@ -28,6 +46,7 @@ function formatTimeDifference(time: { years: number; months: number; days: numbe
   const parts: string[] = [];
   if (time.years > 0) parts.push(`${time.years} año${time.years > 1 ? 's' : ''}`);
   if (time.months > 0) parts.push(`${time.months} mes${time.months > 1 ? 'es' : ''}`);
+  if (time.days > 0) parts.push(`${time.days} día${time.days > 1 ? 's' : ''}`);
   if (time.hours > 0) parts.push(`${time.hours} hora${time.hours > 1 ? 's' : ''}`);
   if (time.minutes > 0 || parts.length === 0) parts.push(`${time.minutes} min${time.minutes !== 1 ? 's' : ''}`);
 
@@ -42,6 +61,8 @@ function formatTimeDifference(time: { years: number; months: number; days: numbe
 
 function GlobalHeader() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { logout } = useAppStore();
   const [timeTogether, setTimeTogether] = useState<React.ReactNode>(null);
 
   useEffect(() => {
@@ -56,12 +77,22 @@ function GlobalHeader() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/(auth)');
+  };
+
   return (
     <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
       <Text style={styles.headerTitle}>RebeDari</Text>
-      <View style={styles.counterBubble}>
-        <Text style={styles.headerLabel}>Juntos desde:</Text>
-        {timeTogether}
+      <View style={styles.headerRight}>
+        <View style={styles.counterBubble}>
+          <Text style={styles.headerLabel}>Juntos desde:</Text>
+          {timeTogether}
+        </View>
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+          <Text style={styles.logoutIcon}>🚪</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -102,7 +133,10 @@ function CustomTabBar() {
             <Pressable
               key={tab.name}
               style={styles.dockItem}
-              onPress={() => navigateTo(`/${tab.name}`)}
+              onPress={() => {
+                const route = tab.name === 'index' ? '/(tabs)' : `/(tabs)/${tab.name}`;
+                navigateTo(route);
+              }}
             >
               <Image
                 source={tab.icon}
@@ -148,11 +182,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingBottom: 10,
+    paddingBottom: 4,
     backgroundColor: 'transparent',
   },
   headerTitle: {
@@ -164,12 +197,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 183, 197, 0.35)',
     borderRadius: 15,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 4,
+    alignItems: 'center',
+    alignSelf: 'center',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  logoutButton: {
+    padding: 8,
+  },
+  logoutIcon: {
+    fontSize: 20,
   },
   headerLabel: {
     fontSize: 11,
     color: '#666666',
-    marginBottom: 2,
+    marginBottom: 0,
   },
   counterBold: {
     fontSize: 13,
@@ -182,15 +228,15 @@ const styles = StyleSheet.create({
   },
   dockContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 30,
-    paddingTop: 10,
+    paddingBottom: 16,
+    paddingTop: 4,
     backgroundColor: 'transparent',
   },
   dock: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 25,
-    height: 70,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingHorizontal: 10,
@@ -199,12 +245,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 4,
   },
   dockIcon: {
-    width: 28,
-    height: 28,
-    marginBottom: 4,
+    width: 22,
+    height: 22,
+    marginBottom: 2,
     tintColor: '#000000',
   },
   dockIconFocused: {

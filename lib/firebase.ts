@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getStorage } from 'firebase/storage';
 import { getFirestore } from 'firebase/firestore';
+import { initializeAuth, inMemoryPersistence } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAc2KbGat-UmdAMKbuspFMWGeTdoC7Udl4",
@@ -15,6 +16,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const storage = getStorage(app);
 export const db = getFirestore(app);
+export const auth = initializeAuth(app, {
+  persistence: inMemoryPersistence
+});
 
 export const uploadFile = async (uri: string, path: string): Promise<string> => {
   const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');

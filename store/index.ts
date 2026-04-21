@@ -1,63 +1,106 @@
 import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, User } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 
-interface User {
+interface UserData {
   id: string;
-  username: string;
+  email: string;
   nombre: string;
 }
 
 interface AppState {
-  user: User | null;
+  user: UserData | null;
+  firebaseUser: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  setUser: (user: User | null) => void;
-  login: (username: string, password: string) => Promise<boolean>;
+  setUser: (user: UserData | null) => void;
+  login: (email: string, password: string) => Promise<boolean>;
+  register: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  checkAuth: () => Promise<void>;
+  checkAuth: () => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   user: null,
+  firebaseUser: null,
   isAuthenticated: false,
   isLoading: true,
 
   setUser: (user) => set({ user, isAuthenticated: !!user }),
 
-  login: async (username, password) => {
+  login: async (email, password) => {
     try {
-      const users = await AsyncStorage.getItem('users');
-      const storedUsers = users ? JSON.parse(users) : {};
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = result.user;
       
-      const user = storedUsers[username];
-      if (user && user.password === password) {
-        await AsyncStorage.setItem('currentUser', JSON.stringify(user));
-        set({ user, isAuthenticated: true });
-        return true;
-      }
-      return false;
-    } catch (error) {
+      const userData: UserData = {
+        id: firebaseUser.uid,
+        email: firebaseUser.email || email,
+        nombre: firebaseUser.displayName || email.split('@')[0],
+      };
+      
+      set({ user: userData, firebaseUser: firebaseUser, isAuthenticated: true });
+      return true;
+    } catch (error: any) {
       console.error('Login error:', error);
-      return false;
+      const errorMessage = error.message || 'Error al iniciar sesión';
+      throw new Error(errorMessage);
+    }
+  },
+
+  register: async (email, password) => {
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      const firebaseUser = result.user;
+      
+      const userData: UserData = {
+        id: firebaseUser.uid,
+        email: firebaseUser.email || email,
+        nombre: email.split('@')[0],
+      };
+      
+      set({ user: userData, firebaseUser: firebaseUser, isAuthenticated: true });
+      return true;
+    } catch (error: any) {
+      console.error('Register error:', error);
+      const errorMessage = error.message || 'Error al registrar';
+      throw new Error(errorMessage);
     }
   },
 
   logout: async () => {
-    await AsyncStorage.removeItem('currentUser');
-    set({ user: null, isAuthenticated: false });
+    try {
+      await signOut(auth);
+      set({ user: null, firebaseUser: null, isAuthenticated: false });
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   },
 
-  checkAuth: async () => {
+  recoverPassword: async (email: string) => {
     try {
-      const currentUser = await AsyncStorage.getItem('currentUser');
-      if (currentUser) {
-        const user = JSON.parse(currentUser);
-        set({ user, isAuthenticated: true, isLoading: false });
-      } else {
-        set({ isLoading: false });
-      }
-    } catch (error) {
-      set({ isLoading: false });
+      await sendPasswordResetEmail(auth, email);
+      return true;
+    } catch (error: any) {
+      console.error('Recovery error:', error);
+      const errorMessage = error.message || 'Error al recuperar';
+      throw new Error(errorMessage);
     }
+  },
+
+  checkAuth: () => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        const userData: UserData = {
+          id: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          nombre: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuario',
+        };
+        set({ user: userData, firebaseUser, isAuthenticated: true, isLoading: false });
+      } else {
+        set({ user: null, firebaseUser: null, isAuthenticated: false, isLoading: false });
+      }
+    });
+    return unsubscribe;
   },
 }));

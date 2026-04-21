@@ -5,10 +5,9 @@ export default function AuthLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        presentation: 'modal',
       }}
     >
-      <Stack.Screen name="login" />
+      <Stack.Screen name="index" options={{ title: 'Iniciar Sesión' }} />
     </Stack>
   );
 }

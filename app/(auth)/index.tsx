@@ -1,73 +1,73 @@
-import { View, Text, StyleSheet, TextInput, Pressable, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAppStore } from '../../store/index';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [username, setUsername] = useState('');
+  const { login, register, recoverPassword } = useAppStore();
+  
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
 
   const handleLogin = async () => {
-    if (!username || !password) {
-      Alert.alert('Error', 'Por favor ingresa usuario y contraseña');
+    if (!email || !password) {
+      Alert.alert('Error', 'Por favor ingresa email y contraseña');
       return;
     }
 
+    setIsLoading(true);
     try {
-      const usersData = await AsyncStorage.getItem('users');
-      const users = usersData ? JSON.parse(usersData) : {};
-      
-      const user = users[username];
-      if (user && user.password === password) {
-        await AsyncStorage.setItem('currentUser', JSON.stringify(user));
-        router.replace('/(tabs)');
+      await login(email, password);
+      router.replace('/(tabs)');
+    } catch (error: any) {
+      const message = error.message || 'Error desconocido';
+      if (message.includes('auth/invalid-email')) {
+        Alert.alert('Error', 'Correo electrónico inválido');
+      } else if (message.includes('auth/invalid-credential') || message.includes('auth/wrong-password')) {
+        Alert.alert('Error', 'Correo o contraseña incorrectos');
+      } else if (message.includes('auth/user-not-found')) {
+        Alert.alert('Error', 'Usuario no encontrado');
       } else {
-        Alert.alert('Error', 'Usuario o contraseña incorrectos');
+        Alert.alert('Error', 'Hubo un problema al iniciar sesión');
       }
-    } catch (error) {
-      Alert.alert('Error', 'Hubo un problema al iniciar sesión');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleRegister = async () => {
-    if (!username || !password) {
+    if (!email || !password) {
       Alert.alert('Error', 'Por favor completa todos los campos');
       return;
     }
 
-    if (password.length < 4) {
-      Alert.alert('Error', 'La contraseña debe tener al menos 4 caracteres');
+    if (password.length < 6) {
+      Alert.alert('Error', 'La contraseña debe tener al menos 6 caracteres');
       return;
     }
 
+    setIsLoading(true);
     try {
-      const usersData = await AsyncStorage.getItem('users');
-      const users = usersData ? JSON.parse(usersData) : {};
-      
-      if (users[username]) {
-        Alert.alert('Error', 'Este usuario ya existe');
-        return;
-      }
-
-      const userCount = Object.keys(users).length;
-      if (userCount >= 2) {
-        Alert.alert('Error', 'Solo se permiten 2 usuarios');
-        return;
-      }
-
-      const newUser = { id: Date.now().toString(), username, password, nombre: username };
-      users[username] = newUser;
-      
-      await AsyncStorage.setItem('users', JSON.stringify(users));
-      await AsyncStorage.setItem('currentUser', JSON.stringify(newUser));
-      
+      await register(email, password);
       router.replace('/(tabs)');
-    } catch (error) {
-      Alert.alert('Error', 'Hubo un problema al registrar');
+    } catch (error: any) {
+      const message = error.message || 'Error desconocido';
+      if (message.includes('auth/email-already-in-use')) {
+        Alert.alert('Error', 'Este correo ya está registrado');
+      } else if (message.includes('auth/invalid-email')) {
+        Alert.alert('Error', 'Correo electrónico inválido');
+      } else if (message.includes('auth/weak-password')) {
+        Alert.alert('Error', 'La contraseña es muy débil');
+      } else {
+        Alert.alert('Error', 'Hubo un problema al registrar');
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -77,8 +77,23 @@ export default function LoginScreen() {
       return;
     }
 
-    Alert.alert('Recuperación', 'Se ha enviado un código de recuperación a tu email');
-    setRecoveryMode(false);
+    setIsLoading(true);
+    try {
+      await recoverPassword(recoveryEmail);
+      Alert.alert('Éxito', 'Revisa tu bandeja de entrada para cambiar tu contraseña');
+      setRecoveryMode(false);
+    } catch (error: any) {
+      const message = error.message || 'Error desconocido';
+      if (message.includes('auth/invalid-email')) {
+        Alert.alert('Error', 'Correo electrónico inválido');
+      } else if (message.includes('auth/user-not-found')) {
+        Alert.alert('Error', 'Usuario no encontrado');
+      } else {
+        Alert.alert('Error', 'No se pudo enviar el correo de recuperación');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -105,6 +120,7 @@ export default function LoginScreen() {
               value={recoveryEmail}
               onChangeText={setRecoveryEmail}
               keyboardType="email-address"
+              autoCapitalize="none"
             />
             <Pressable style={styles.button} onPress={handleRecovery}>
               <Text style={styles.buttonText}>Enviar código</Text>
@@ -117,11 +133,12 @@ export default function LoginScreen() {
           <View style={styles.form}>
             <TextInput
               style={styles.input}
-              placeholder="Usuario"
+              placeholder="Email"
               placeholderTextColor="#8E8E93"
-              value={username}
-              onChangeText={setUsername}
+              value={email}
+              onChangeText={setEmail}
               autoCapitalize="none"
+              keyboardType="email-address"
             />
             <TextInput
               style={styles.input}
@@ -132,12 +149,17 @@ export default function LoginScreen() {
               secureTextEntry
             />
             <Pressable 
-              style={styles.button} 
+              style={[styles.button, isLoading && styles.buttonDisabled]} 
               onPress={isRegistering ? handleRegister : handleLogin}
+              disabled={isLoading}
             >
-              <Text style={styles.buttonText}>
-                {isRegistering ? 'Crear cuenta' : 'Entrar'}
-              </Text>
+              {isLoading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>
+                  {isRegistering ? 'Crear cuenta' : 'Entrar'}
+                </Text>
+              )}
             </Pressable>
             <Pressable onPress={() => setRecoveryMode(true)}>
               <Text style={styles.linkText}>¿Olvidaste tu contraseña?</Text>
@@ -196,6 +218,9 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     alignItems: 'center',
     marginBottom: 15,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: '#FFFFFF',

@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, FlatList, Pressable, ScrollView, Modal, Alert, 
 import { useState, useEffect, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc } from 'firebase/firestore';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
 
 const { width } = Dimensions.get('window');
@@ -151,6 +151,9 @@ export default function FeedScreen() {
   const [uploadingTrip, setUploadingTrip] = useState(false);
   
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [editingPhotoId, setEditingPhotoId] = useState<string | null>(null);
+  const [editingCaption, setEditingCaption] = useState('');
+  const [photoOptionsId, setPhotoOptionsId] = useState<string | null>(null);
 
   useEffect(() => {
     const photosQuery = query(collection(db, 'fotos'), orderBy('created_at', 'desc'));
@@ -235,7 +238,7 @@ export default function FeedScreen() {
         await addDoc(collection(db, 'fotos'), {
           url,
           path,
-          caption: '',
+          caption: 'Recuerdos',
           created_at: new Date().toISOString(),
         });
         
@@ -460,50 +463,90 @@ export default function FeedScreen() {
     return null;
   };
 
-  const renderPhoto = ({ item }: { item: Photo }) => (
-    <Pressable 
-      style={styles.photoContainer} 
-      onLongPress={() => {
-        Alert.alert(
-          '¿Eliminar archivo?',
-          'Esta acción no se puede deshacer.',
-          [
-            { text: 'Cancelar', style: 'cancel' },
-            { 
-              text: 'Eliminar', 
-              style: 'destructive',
-              onPress: async () => {
-                try {
-                  await deleteFile(item.path);
-                  await deleteDoc(doc(db, 'fotos', item.id));
-                } catch (error) {
-                  console.error('Error deleting photo:', error);
-                }
-              }
-            },
-          ]
-        );
-      }}
-    >
-      <View style={styles.photoHeader}>
-        <View style={styles.avatar} />
-        <Text style={styles.username}>RebeDari</Text>
-      </View>
-      {item.url ? (
-        <TouchableOpacity onPress={() => setSelectedPhoto(item.url)}>
-          <Image source={{ uri: item.url }} style={styles.photoImage} />
-        </TouchableOpacity>
-      ) : (
-        <View style={styles.photoPlaceholder}>
-          <Text style={styles.placeholderText}>📷</Text>
-          <Text style={styles.placeholderSubtext}>Tu foto aquí</Text>
+  const renderPhoto = ({ item }: { item: Photo }) => {
+    const getTimeAgo = (dateStr: string) => {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diff = now.getTime() - date.getTime();
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const days = Math.floor(hours / 24);
+      if (days > 0) return `Hace ${days} día${days > 1 ? 's' : ''}`;
+      if (hours > 0) return `Hace ${hours} hora${hours > 1 ? 's' : ''}`;
+      return 'Hace un momento';
+    };
+
+    return (
+      <Pressable style={styles.photoContainer}>
+        <View style={styles.photoHeader}>
+          <View style={styles.headerLeft}>
+            <View style={styles.avatar} />
+            <View style={styles.userInfo}>
+              <Text style={styles.username}>RebeDari</Text>
+              <Text style={styles.timeAgo}>{getTimeAgo(item.created_at)}</Text>
+            </View>
+          </View>
+          <TouchableOpacity onPress={() => setPhotoOptionsId(photoOptionsId === item.id ? null : item.id)}>
+            <Text style={styles.moreOptions}>⋮</Text>
+          </TouchableOpacity>
+          {photoOptionsId === item.id && (
+            <Pressable style={styles.optionsMenuContainer} onPress={(e) => e.stopPropagation()}>
+              <Pressable 
+                style={styles.optionButton} 
+                onPress={() => {
+                  setPhotoOptionsId(null);
+                  setEditingPhotoId(item.id);
+                  setEditingCaption(item.caption || 'Recuerdos');
+                  setModalVisible(true);
+                }}
+              >
+                <Text style={styles.optionText}>Editar título</Text>
+              </Pressable>
+              <Pressable 
+                style={styles.optionButton} 
+                onPress={() => {
+                  setPhotoOptionsId(null);
+                  Alert.alert(
+                    '¿Seguro que quieres eliminar esta foto?',
+                    'Esta acción no se puede deshacer.',
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      { 
+                        text: 'Eliminar', 
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            await deleteFile(item.path);
+                            await deleteDoc(doc(db, 'fotos', item.id));
+                          } catch (error) {
+                            console.error('Error deleting photo:', error);
+                          }
+                        }
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Text style={[styles.optionText, styles.optionDeleteText]}>Eliminar foto</Text>
+              </Pressable>
+            </Pressable>
+          )}
         </View>
-      )}
-      <View style={styles.photoFooter}>
-        <Text style={styles.caption}>{item.caption || 'Fotos de ustedes'}</Text>
-      </View>
-    </Pressable>
-  );
+        {item.url ? (
+          <TouchableOpacity onPress={() => setSelectedPhoto(item.url)}>
+            <Image source={{ uri: item.url }} style={styles.photoImage} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.photoPlaceholder}>
+            <Text style={styles.placeholderText}>📷</Text>
+            <Text style={styles.placeholderSubtext}>Tu foto aquí</Text>
+          </View>
+        )}
+        <View style={styles.photoFooter}>
+          <Text style={styles.caption}>{item.caption || 'Fotos de ustedes'}</Text>
+        </View>
+      </Pressable>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -526,6 +569,7 @@ export default function FeedScreen() {
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.feedContent}
+        onScrollBeginDrag={() => setPhotoOptionsId(null)}
       />
       
       <TouchableOpacity style={styles.floatingButton} onPress={pickImage}>
@@ -561,6 +605,46 @@ export default function FeedScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={editingPhotoId !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingPhotoId(null)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setEditingPhotoId(null)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Editar título</Text>
+            <TextInput
+              style={styles.editCaptionInput}
+              value={editingCaption}
+              onChangeText={setEditingCaption}
+              placeholder="Título de la foto"
+              placeholderTextColor="#8E8E93"
+            />
+            <View style={styles.editModalButtons}>
+              <Pressable style={styles.cancelButton} onPress={() => setEditingPhotoId(null)}>
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                style={styles.saveButton}
+                onPress={async () => {
+                  if (editingPhotoId) {
+                    try {
+                      await updateDoc(doc(db, 'fotos', editingPhotoId), { caption: editingCaption });
+                      setEditingPhotoId(null);
+                    } catch (error) {
+                      console.error('Error updating caption:', error);
+                    }
+                  }
+                }}
+              >
+                <Text style={styles.saveButtonText}>Guardar</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -588,17 +672,16 @@ const styles = StyleSheet.create({
     color: '#333333',
     lineHeight: 22,
   },
-  buttonRow: {
+buttonRow: {
     flexDirection: 'row',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    marginBottom: 5,
-    gap: 6,
+    justifyContent: 'space-between',
+    marginBottom: 3,
+    gap: 4,
   },
   cardButton: {
     flex: 1,
-    minHeight: 60,
-    paddingVertical: 12,
+    minHeight: 42,
+    paddingVertical: 6,
     paddingHorizontal: 8,
     backgroundColor: '#FFFFFF',
     borderRadius: 15,
@@ -608,7 +691,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 2,
   },
   cardButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#333333',
     textAlign: 'center',
@@ -617,13 +700,23 @@ const styles = StyleSheet.create({
     paddingBottom: 110,
   },
   photoContainer: {
-    marginBottom: 15,
+    marginHorizontal: 12,
+    marginBottom: 16,
+    marginTop: 8,
     backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   photoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
     paddingVertical: 10,
   },
   avatar: {
@@ -635,12 +728,12 @@ const styles = StyleSheet.create({
   },
   username: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: '#000000',
   },
   photoPlaceholder: {
-    width: width,
-    height: width,
+    width: '100%',
+    aspectRatio: 1,
     backgroundColor: '#F5F5F5',
     alignItems: 'center',
     justifyContent: 'center',
@@ -690,6 +783,46 @@ const styles = StyleSheet.create({
     color: '#FF6B9D',
     marginBottom: 20,
     textAlign: 'center',
+  },
+  editCaptionInput: {
+    width: '100%',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    padding: 15,
+    fontSize: 16,
+    color: '#333333',
+    marginBottom: 20,
+  },
+  editModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FF6B9D',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#FF6B9D',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  saveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#FF6B9D',
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   counterText: {
     fontSize: 14,
@@ -834,10 +967,10 @@ const styles = StyleSheet.create({
   floatingButton: {
     position: 'absolute',
     right: 20,
-    bottom: 130,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    bottom: 85,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#FF6B9D',
     alignItems: 'center',
     justifyContent: 'center',
@@ -846,6 +979,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+    zIndex: 10,
   },
   floatingButtonText: {
     fontSize: 30,
@@ -865,8 +999,26 @@ const styles = StyleSheet.create({
     color: '#FF6B9D',
   },
   photoImage: {
-    width: width,
-    height: width,
+    width: '100%',
+    aspectRatio: 1,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  userInfo: {
+    justifyContent: 'center',
+  },
+  timeAgo: {
+    fontSize: 11,
+    color: '#8E8E93',
+    marginTop: 1,
+  },
+  moreOptions: {
+    fontSize: 18,
+    color: '#8E8E93',
+    paddingHorizontal: 4,
   },
   cameraRow: {
     flexDirection: 'row',
@@ -922,5 +1074,32 @@ const styles = StyleSheet.create({
   closeFullImageText: {
     fontSize: 20,
     color: '#FFFFFF',
+  },
+  optionsMenuContainer: {
+    position: 'absolute',
+    right: 12,
+    top: 50,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+    minWidth: 140,
+    zIndex: 100,
+  },
+  optionButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  optionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FF6B9D',
+  },
+  optionDeleteText: {
+    color: '#FF3B30',
   },
 });
