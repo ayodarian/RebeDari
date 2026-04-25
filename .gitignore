@@ -8,6 +8,8 @@ node_modules/
 dist/
 web-build/
 expo-env.d.ts
+.expo/web/cache/
+dist/assets/
 
 # Native
 .kotlin/
