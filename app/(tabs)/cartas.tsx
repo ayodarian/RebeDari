@@ -339,6 +339,14 @@ export default function CartasScreen() {
         contentContainerStyle={styles.listaContent}
         showsVerticalScrollIndicator={false}
         onScrollBeginDrag={() => setCartaOptionsId(null)}
+        onScroll={({ nativeEvent }) => {
+          const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+          // cuando estemos a menos de 200px del final, cargamos más
+          if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 200) {
+            loadMoreCartas();
+          }
+        }}
+        scrollEventThrottle={250}
       >
         {cartas.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -349,11 +357,7 @@ export default function CartasScreen() {
           cartas.map((carta, index) => renderTarjeta(carta, index))
         )}
 
-        {hasMoreCartas && (
-          <TouchableOpacity style={styles.loadMoreButton} onPress={loadMoreCartas}>
-            {moreLoadingCartas ? <ActivityIndicator color="#FF6B9D" /> : <Text style={styles.loadMoreText}>Cargar más</Text>}
-          </TouchableOpacity>
-        )}
+        {/* carga automática al llegar al final (si hay más) */}
       </ScrollView>
       
       <TouchableOpacity style={styles.floatingButton} onPress={uploadCarta}>

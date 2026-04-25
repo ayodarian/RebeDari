@@ -9,7 +9,7 @@
     "newArchEnabled": true,
     "scheme": "rebedari",
     "splash": {
-      "image": "./assets/splash-icon.jpg",
+      "image": "./assets/adaptive-icon.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#FF6B9D"
     },

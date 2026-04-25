@@ -4,7 +4,9 @@ import { Dimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../lib/firebase';
 import { COLORS } from '../styles/brand';
-import { doc, onSnapshot, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, updateDoc, query, orderBy, getDocs, writeBatch, deleteDoc } from 'firebase/firestore';
+import ConfettiCannon from 'react-native-confetti-cannon';
+import { useToast } from '../components/Toast';
 
 const { width } = Dimensions.get('window');
 const TAMANO_CASILLA = (width - 80) / 5;
@@ -28,7 +30,7 @@ const generarCasillasIniciales = (cantidad: number): Casilla[] => {
   }));
 };
 
-const BINGO_DOC_PATH = doc(db, 'bingo', 'board');
+const BINGO_CELLS_COLLECTION = collection(db, 'bingo_cells');
 
 export default function BingoScreen() {
   const [casillas, setCasillas] = useState<Casilla[]>(generarCasillasIniciales(25));
@@ -42,6 +44,8 @@ export default function BingoScreen() {
   const [filtroActual, setFiltroActual] = useState<'todos' | 'completados' | 'pendientes'>('todos');
   const insets = useSafeAreaInsets();
   const animValues = useRef<Record<string, Animated.Value>>({}).current;
+  const toast = useToast();
+  const [showConfetti, setShowConfetti] = useState(false);
 
   // porcentaje completado
   const total = casillas.length || 1;
@@ -49,20 +53,24 @@ export default function BingoScreen() {
   const porcentaje = Math.round((completadas / total) * 100);
 
   useEffect(() => {
-    // subscribir al documento de bingo en Firestore
-    const unsubscribe = onSnapshot(BINGO_DOC_PATH, async (snapshot) => {
-      if (!snapshot.exists()) {
-        // crear documento inicial si no existe
+    // subscribir a la colección de casillas
+    const q = query(BINGO_CELLS_COLLECTION, orderBy('numero', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (snapshot.empty) {
+        // crear casillas iniciales como documentos individuales
         const inicial = generarCasillasIniciales(25);
-        await setDoc(BINGO_DOC_PATH, { casillas: inicial });
+        const batch = writeBatch(db);
+        inicial.forEach(c => {
+          const ref = doc(BINGO_CELLS_COLLECTION, c.id);
+          batch.set(ref, c);
+        });
+        batch.commit().catch(err => console.error('Error creando casillas iniciales', err));
         setCasillas(inicial);
         return;
       }
 
-      const data = snapshot.data();
-      if (data && Array.isArray(data.casillas)) {
-        setCasillas(data.casillas as Casilla[]);
-      }
+      const cells = snapshot.docs.map(d => d.data() as Casilla);
+      setCasillas(cells);
     });
 
     return () => unsubscribe();
@@ -96,7 +104,8 @@ export default function BingoScreen() {
       descripcion: 'Descripción del plan...',
       realizada: false,
     };
-    setCasillas([...casillas, nuevaCasilla]);
+    // guardar en Firestore como documento individual
+    setDoc(doc(BINGO_CELLS_COLLECTION, nuevaCasilla.id), nuevaCasilla).catch(err => console.error('Error creando casilla', err));
   };
 
   const eliminarCasilla = (id: string) => {
@@ -110,7 +119,14 @@ export default function BingoScreen() {
           style: 'destructive',
           onPress: () => {
             const filtrada = casillas.filter(c => c.id !== id);
-            setCasillas(reindexarCasillas(filtrada));
+            const reindexadas = reindexarCasillas(filtrada);
+            // eliminar documento y actualizar numeros por batch
+            const batch = writeBatch(db);
+            reindexadas.forEach(c => {
+              batch.set(doc(BINGO_CELLS_COLLECTION, c.id), c);
+            });
+            batch.delete(doc(BINGO_CELLS_COLLECTION, id));
+            batch.commit().catch(err => console.error('Error eliminando casilla', err));
             setModoEliminar(false);
           },
         },
@@ -145,8 +161,9 @@ export default function BingoScreen() {
         descripcion: descripcionInput,
       } : c
     );
-    // guardar en servidor
-    updateDoc(BINGO_DOC_PATH, { casillas: actualizadas }).catch(err => console.error('Error guardando casillas', err));
+    // guardar solo la casilla modificada
+    const updated = actualizadas.find(c => c.id === selectedCasilla.id)!;
+    updateDoc(doc(BINGO_CELLS_COLLECTION, updated.id), { titulo: updated.titulo, descripcion: updated.descripcion }).catch(err => console.error('Error guardando casilla', err));
     cerrarModal();
   };
 
@@ -159,7 +176,11 @@ export default function BingoScreen() {
         fechaRealizado: new Date().toLocaleDateString('es-ES'),
       } : c
     );
-    updateDoc(BINGO_DOC_PATH, { casillas: actualizadas }).catch(err => console.error('Error marcando realizado', err));
+    const updated = actualizadas.find(c => c.id === selectedCasilla.id)!;
+    updateDoc(doc(BINGO_CELLS_COLLECTION, updated.id), { realizada: true, fechaRealizado: updated.fechaRealizado }).catch(err => console.error('Error marcando realizado', err));
+    // mostrar toast y posible confetti
+    toast.show('Plan marcado como realizado');
+    if (porcentaje >= 100) setShowConfetti(true);
     cerrarModal();
   };
 
@@ -275,6 +296,10 @@ export default function BingoScreen() {
           ))}
         </View>
       </ScrollView>
+
+      {showConfetti && (
+        <ConfettiCannon count={150} origin={{ x: width / 2, y: 0 }} fadeOut onAnimationEnd={() => setShowConfetti(false)} />
+      )}
 
       <Modal
         visible={modalVisible}
