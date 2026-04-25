@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, TextInput, Pressable, Alert, KeyboardAvoidingVi
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useAppStore } from '../../store/index';
+import { PrimaryButton, COLORS } from '../styles/brand';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -148,19 +149,13 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               secureTextEntry
             />
-            <Pressable 
-              style={[styles.button, isLoading && styles.buttonDisabled]} 
-              onPress={isRegistering ? handleRegister : handleLogin}
-              disabled={isLoading}
-            >
-              {isLoading ? (
+            {isLoading ? (
+              <Pressable style={[styles.button, styles.buttonDisabled]}>
                 <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.buttonText}>
-                  {isRegistering ? 'Crear cuenta' : 'Entrar'}
-                </Text>
-              )}
-            </Pressable>
+              </Pressable>
+            ) : (
+              <PrimaryButton title={isRegistering ? 'Crear cuenta' : 'Entrar'} onPress={isRegistering ? handleRegister : handleLogin} />
+            )}
             <Pressable onPress={() => setRecoveryMode(true)}>
               <Text style={styles.linkText}>¿Olvidaste tu contraseña?</Text>
             </Pressable>

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Dimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../lib/firebase';
+import { COLORS } from '../styles/brand';
 import { doc, onSnapshot, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 
 const { width } = Dimensions.get('window');
@@ -206,7 +207,7 @@ export default function BingoScreen() {
   return (
     <View style={[styles.container, { paddingTop: 5 }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Bingo</Text>
+        <Text style={[styles.title, { color: COLORS.primary }]}>Bingo</Text>
       </View>
 
       <View style={styles.progressContainer}>
