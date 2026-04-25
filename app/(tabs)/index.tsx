@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, FlatList, Pressable, ScrollView, Modal, Alert, 
 import { useState, useEffect, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc, getDocs, limit, startAfter } from 'firebase/firestore';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
 
 const { width } = Dimensions.get('window');
@@ -158,13 +158,17 @@ export default function FeedScreen() {
   const [actionModalVisible, setActionModalVisible] = useState(false);
 
   useEffect(() => {
-    const photosQuery = query(collection(db, 'fotos'), orderBy('created_at', 'desc'));
+    const photosQuery = query(collection(db, 'fotos'), orderBy('created_at', 'desc'), limit(PHOTOS_PAGE));
     const unsubscribePhotos = onSnapshot(photosQuery, (snapshot) => {
       const photosData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Photo[];
       setPhotos(photosData);
+      if (snapshot.docs.length > 0) {
+        setLastVisiblePhotos(snapshot.docs[snapshot.docs.length - 1]);
+        setHasMorePhotos(snapshot.docs.length === PHOTOS_PAGE);
+      } else setHasMorePhotos(false);
     });
 
     const tripsQuery = query(collection(db, 'bitacora'), orderBy('date', 'desc'));
@@ -181,6 +185,25 @@ export default function FeedScreen() {
       unsubscribeTrips();
     };
   }, []);
+
+  const loadMorePhotos = async () => {
+    if (!hasMorePhotos || moreLoadingPhotos || !lastVisiblePhotos) return;
+    setMoreLoadingPhotos(true);
+    try {
+      const moreQuery = query(collection(db, 'fotos'), orderBy('created_at', 'desc'), startAfter(lastVisiblePhotos), limit(PHOTOS_PAGE));
+      const snap = await getDocs(moreQuery);
+      const newPhotos = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Photo[];
+      if (newPhotos.length > 0) {
+        setPhotos(prev => [...prev, ...newPhotos]);
+        setLastVisiblePhotos(snap.docs[snap.docs.length - 1]);
+      }
+      if (newPhotos.length < PHOTOS_PAGE) setHasMorePhotos(false);
+    } catch (e) {
+      console.error('Error cargando más fotos', e);
+    } finally {
+      setMoreLoadingPhotos(false);
+    }
+  };
 
   useEffect(() => {
     const updateCounters = () => {
@@ -1184,3 +1207,7 @@ buttonRow: {
     color: '#666666',
   },
 });
+  const [lastVisiblePhotos, setLastVisiblePhotos] = useState<any>(null);
+  const [moreLoadingPhotos, setMoreLoadingPhotos] = useState(false);
+  const [hasMorePhotos, setHasMorePhotos] = useState(true);
+  const PHOTOS_PAGE = 12;

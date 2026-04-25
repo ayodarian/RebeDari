@@ -5,7 +5,7 @@ import { VideoPlayer, useVideoPlayer, VideoView } from 'expo-video';
 import Slider from '@react-native-community/slider';
 import * as ImagePicker from 'expo-image-picker';
 import { getInfoAsync } from 'expo-file-system/legacy';
-import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc, getDocs, limit, startAfter } from 'firebase/firestore';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
 
 const { width, height } = Dimensions.get('window');
@@ -258,19 +258,49 @@ export default function ReelsScreen() {
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
   const [editingCaption, setEditingCaption] = useState('');
   const [actionModalVisible, setActionModalVisible] = useState(false);
+  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [moreLoading, setMoreLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const PAGE_SIZE = 10;
 
   useEffect(() => {
-    const videosQuery = query(collection(db, 'videos'), orderBy('created_at', 'desc'));
+    // carga inicial con límite
+    const videosQuery = query(collection(db, 'videos'), orderBy('created_at', 'desc'), limit(PAGE_SIZE));
     const unsubscribe = onSnapshot(videosQuery, (snapshot) => {
       const videosData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as VideoItem[];
       setVideos(videosData);
+      if (snapshot.docs.length > 0) {
+        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+        setHasMore(snapshot.docs.length === PAGE_SIZE);
+      } else {
+        setHasMore(false);
+      }
     });
 
     return () => unsubscribe();
   }, []);
+
+  const loadMoreVideos = async () => {
+    if (!hasMore || moreLoading || !lastVisible) return;
+    setMoreLoading(true);
+    try {
+      const moreQuery = query(collection(db, 'videos'), orderBy('created_at', 'desc'), startAfter(lastVisible), limit(PAGE_SIZE));
+      const snap = await getDocs(moreQuery);
+      const newVideos = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as VideoItem[];
+      if (newVideos.length > 0) {
+        setVideos(prev => [...prev, ...newVideos]);
+        setLastVisible(snap.docs[snap.docs.length - 1]);
+      }
+      if (newVideos.length < PAGE_SIZE) setHasMore(false);
+    } catch (e) {
+      console.error('Error cargando más videos', e);
+    } finally {
+      setMoreLoading(false);
+    }
+  };
 
   const pickVideo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -416,6 +446,13 @@ export default function ReelsScreen() {
         maxToRenderPerBatch={1}
         windowSize={3}
         initialNumToRender={1}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => loadMoreVideos()}
+        ListFooterComponent={() => hasMore ? (
+          <View style={{ padding: 12, alignItems: 'center' }}>
+            {moreLoading ? <ActivityIndicator color="#FF6B9D" /> : <Text style={{ color: '#8E8E93' }}>Cargar más</Text>}
+          </View>
+        ) : null}
       />
       
       <TouchableOpacity style={styles.floatingButton} onPress={openActionModal}>

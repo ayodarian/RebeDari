@@ -1,12 +1,15 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity, ActivityIndicator, Alert, Linking, TextInput, Modal, Dimensions } from 'react-native';
+import { WebView } from 'react-native-webview';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useState, useEffect } from 'react';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
-import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, where, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, where, updateDoc, getDocs, limit, startAfter } from 'firebase/firestore';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
+
+
 
 interface Carta {
   id: string;
@@ -18,6 +21,7 @@ interface Carta {
   fechaEscritura?: string;
   description: string;
   favorita?: boolean;
+  tipo?: 'pdf' | 'imagen';
   created_at: string;
 }
 
@@ -34,12 +38,15 @@ export default function CartasScreen() {
   const [editingCartaId, setEditingCartaId] = useState<string | null>(null);
   const [editingTitulo, setEditingTitulo] = useState('');
   const [descripcionTemp, setDescripcionTemp] = useState('');
+  const [tituloCartaTemp, setTituloCartaTemp] = useState('');
   const [previewCarta, setPreviewCarta] = useState<Carta | null>(null);
 
   useEffect(() => {
     const cartasQuery = query(
       collection(db, 'cartas'),
-      where('remitente', '==', pestanaActiva)
+      where('remitente', '==', pestanaActiva),
+      orderBy('created_at', 'desc'),
+      limit(CARTAS_PAGE)
     );
     
     const unsubscribe = onSnapshot(cartasQuery, (snapshot) => {
@@ -50,7 +57,7 @@ export default function CartasScreen() {
 
       switch (filterMode) {
         case 'recientes':
-          cartasData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          // ya vienen ordenadas por created_at desc
           break;
         case 'fecha':
           cartasData.sort((a, b) => {
@@ -68,10 +75,33 @@ export default function CartasScreen() {
       }
 
       setCartas(cartasData);
+      if (snapshot.docs.length > 0) {
+        setLastVisibleCartas(snapshot.docs[snapshot.docs.length - 1]);
+        setHasMoreCartas(snapshot.docs.length === CARTAS_PAGE);
+      } else setHasMoreCartas(false);
     });
 
     return () => unsubscribe();
   }, [pestanaActiva, filterMode]);
+
+  const loadMoreCartas = async () => {
+    if (!hasMoreCartas || moreLoadingCartas || !lastVisibleCartas) return;
+    setMoreLoadingCartas(true);
+    try {
+      const moreQuery = query(collection(db, 'cartas'), where('remitente', '==', pestanaActiva), orderBy('created_at', 'desc'), startAfter(lastVisibleCartas), limit(CARTAS_PAGE));
+      const snap = await getDocs(moreQuery);
+      const newCartas = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Carta[];
+      if (newCartas.length > 0) {
+        setCartas(prev => [...prev, ...newCartas]);
+        setLastVisibleCartas(snap.docs[snap.docs.length - 1]);
+      }
+      if (newCartas.length < CARTAS_PAGE) setHasMoreCartas(false);
+    } catch (e) {
+      console.error('Error cargando más cartas', e);
+    } finally {
+      setMoreLoadingCartas(false);
+    }
+  };
 
   const uploadCarta = async () => {
     try {
@@ -83,6 +113,7 @@ export default function CartasScreen() {
         setPendingUpload({ uri: result.assets[0].uri, name: result.assets[0].name });
         setFechaEscrituraTemp('');
         setDescripcionTemp('');
+        setTituloCartaTemp('');
         setFechaModalOpen(true);
       }
     } catch (error) {
@@ -93,7 +124,13 @@ export default function CartasScreen() {
   };
 
   const confirmarUpload = async () => {
-    if (!pendingUpload || !fechaEscrituraTemp.trim()) {
+    if (!pendingUpload) return;
+    
+    if (!tituloCartaTemp.trim()) {
+      Alert.alert('Error', 'Por favor ingresa un título para la carta');
+      return;
+    }
+    if (!fechaEscrituraTemp.trim()) {
       Alert.alert('Error', 'Por favor ingresa la fecha de escritura');
       return;
     }
@@ -106,11 +143,12 @@ export default function CartasScreen() {
     setUploading(true);
 
     const timestamp = Date.now();
-    const path = `cartas/${pestanaActiva}/${timestamp}.pdf`;
+    const extension = pendingUpload.name.split('.').pop()?.toLowerCase() || 'pdf';
+    const path = `cartas/${pestanaActiva}/${timestamp}.${extension}`;
 
     try {
       const url = await uploadFile(pendingUpload.uri, path);
-      const titulo = pendingUpload.name.replace('.pdf', '');
+      const titulo = tituloCartaTemp.trim();
 
       await addDoc(collection(db, 'cartas'), {
         titulo,
@@ -134,6 +172,7 @@ export default function CartasScreen() {
       setPendingUpload(null);
       setFechaEscrituraTemp('');
       setDescripcionTemp('');
+      setTituloCartaTemp('');
     }
   };
 
@@ -183,7 +222,8 @@ export default function CartasScreen() {
     </TouchableOpacity>
   );
 
-  const renderTarjeta = (carta: Carta) => (
+  const renderTarjeta = (carta: Carta, index: number) => {
+    return (
     <Swipeable
       key={carta.id}
       renderRightActions={() => renderRightActions(carta)}
@@ -194,12 +234,12 @@ export default function CartasScreen() {
         onPress={() => abrirCarta(carta)}
       >
         <View style={styles.tarjetaIcono}>
-          <Text style={styles.tarjetaIconText}>📄</Text>
+          <Text style={styles.tarjetaIconText}>💌</Text>
         </View>
         <View style={styles.tarjetaContent}>
           <Text style={styles.tarjetaTitulo}>{carta.titulo}</Text>
           <Text style={styles.tarjetaSubtitulo}>
-            {carta.fechaEscritura || carta.fecha}
+            De {carta.remitente} • {carta.fechaEscritura || carta.fecha}
           </Text>
         </View>
         <View style={styles.tarjetaRight}>
@@ -237,7 +277,8 @@ export default function CartasScreen() {
         </View>
       </TouchableOpacity>
     </Swipeable>
-  );
+    );
+  };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -297,14 +338,21 @@ export default function CartasScreen() {
         style={styles.lista}
         contentContainerStyle={styles.listaContent}
         showsVerticalScrollIndicator={false}
+        onScrollBeginDrag={() => setCartaOptionsId(null)}
       >
         {cartas.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>Sin cartas</Text>
-            <Text style={styles.emptySubtext}>Toca + para subir un PDF</Text>
+            <Text style={styles.emptySubtext}>Toca + para subir una carta</Text>
           </View>
         ) : (
-          cartas.map(renderTarjeta)
+          cartas.map((carta, index) => renderTarjeta(carta, index))
+        )}
+
+        {hasMoreCartas && (
+          <TouchableOpacity style={styles.loadMoreButton} onPress={loadMoreCartas}>
+            {moreLoadingCartas ? <ActivityIndicator color="#FF6B9D" /> : <Text style={styles.loadMoreText}>Cargar más</Text>}
+          </TouchableOpacity>
         )}
       </ScrollView>
       
@@ -320,8 +368,16 @@ export default function CartasScreen() {
       >
         <Pressable style={styles.modalOverlay} onPress={() => setFechaModalOpen(false)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Fecha de escritura</Text>
-            <Text style={styles.modalSubtitle}>Ingresa la fecha en que escribiste esta carta</Text>
+            <Text style={styles.modalTitle}>Nueva Carta</Text>
+            <Text style={styles.modalSubtitle}>Título de la carta</Text>
+            <TextInput
+              style={styles.fechaInput}
+              value={tituloCartaTemp}
+              onChangeText={setTituloCartaTemp}
+              placeholder="Ej: Carta de San Valentín"
+              placeholderTextColor="#8E8E93"
+            />
+            <Text style={styles.modalSubtitle}>Fecha de escritura</Text>
             <TextInput
               style={styles.fechaInput}
               value={fechaEscrituraTemp}
@@ -340,7 +396,7 @@ export default function CartasScreen() {
               numberOfLines={4}
             />
             <View style={styles.modalButtons}>
-              <Pressable style={styles.cancelButton} onPress={() => { setFechaModalOpen(false); setPendingUpload(null); }}>
+              <Pressable style={styles.cancelButton} onPress={() => { setFechaModalOpen(false); setPendingUpload(null); setTituloCartaTemp(''); }}>
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
               </Pressable>
               <Pressable style={styles.saveButton} onPress={confirmarUpload}>
@@ -397,55 +453,70 @@ export default function CartasScreen() {
         animationType="fade"
         onRequestClose={() => setPreviewCarta(null)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setPreviewCarta(null)}>
-          <Pressable style={styles.previewModalCard} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.previewHeader}>
-              <Text style={styles.previewTitle} numberOfLines={1}>{previewCarta?.titulo}</Text>
-              <TouchableOpacity onPress={() => setPreviewCarta(null)} style={styles.closeButton}>
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
+        <View style={styles.romanticoOverlay}>
+          <View style={styles.romanticoTarjeta}>
+            <TouchableOpacity 
+              style={styles.romanticoCerrar} 
+              onPress={() => setPreviewCarta(null)}
+            >
+              <Text style={styles.romanticoCerrarTexto}>✕</Text>
+            </TouchableOpacity>
+            
+            <View style={styles.romanticoHeader}>
+              <Text style={styles.romanticoIcono}>📄</Text>
+              <Text style={styles.romanticoTitulo} numberOfLines={2}>
+                {previewCarta?.titulo}
+              </Text>
+              <Text style={styles.romanticoFecha}>
+                De {previewCarta?.remitente} • {previewCarta?.fechaEscritura || previewCarta?.fecha}
+              </Text>
             </View>
             
-            <View style={styles.previewContent}>
+            <View style={styles.romanticoDivider} />
+            
+            <View style={styles.romanticoVisorContainer}>
+              <Text style={styles.romanticoEtiqueta}>Vista previa de la carta:</Text>
+              {previewCarta?.url?.toLowerCase().includes('.pdf') ? (
+                <WebView
+                  source={{ uri: `https://docs.google.com/viewer?url=${encodeURIComponent(previewCarta?.url || '')}&embedded=true` }}
+                  style={{ flex: 1, backgroundColor: 'transparent' }}
+                  originWhitelist={['*']}
+                  javaScriptEnabled={true}
+                  scalesPageToFit={true}
+                  scrollEnabled={true}
+                  bounces={true}
+                  startInLoadingState={true}
+                />
+              ) : (
+                <View style={styles.romanticoImageContainer}>
+                  <Text style={styles.romanticoImageIcon}>📷</Text>
+                  <Text style={styles.romanticoImageText}>Cargando imagen...</Text>
+                </View>
+              )}
+            </View>
+            
+            <View style={styles.romanticoFooter}>
+              <ScrollView style={styles.romanticoDescripcion} showsVerticalScrollIndicator={false}>
+                <Text style={styles.romanticoDescripcionTexto}>
+                  {previewCarta?.description || 'Sin descripción'}
+                </Text>
+              </ScrollView>
               <TouchableOpacity 
-                style={styles.previewDocumento}
+                style={styles.romanticoBoton}
                 onPress={() => {
-                  setPreviewCarta(null);
                   if (previewCarta?.url) {
-                    Linking.openURL(previewCarta.url);
+                    const urlPDF = previewCarta?.url?.toLowerCase().includes('.pdf') 
+                      ? `https://docs.google.com/viewer?url=${encodeURIComponent(previewCarta?.url || '')}&embedded=true`
+                      : previewCarta?.url;
+                    Linking.openURL(urlPDF || '');
                   }
                 }}
               >
-                <Text style={styles.previewPdfIcon}>📄</Text>
-                <Text style={styles.previewPdfName} numberOfLines={2}>{previewCarta?.titulo}</Text>
-                <Text style={styles.previewPdfTap}>Toca para ver</Text>
+                <Text style={styles.romanticoBotonTexto}>📁 Abrir Documento Completo</Text>
               </TouchableOpacity>
-              
-              <ScrollView style={styles.previewDescripcion} showsVerticalScrollIndicator={false}>
-                <Text style={styles.previewDescripcionLabel}>Descripción</Text>
-                <Text style={styles.previewDescripcionText}>
-                  {previewCarta?.description || 'Sin descripción'}
-                </Text>
-                <Text style={[styles.previewDescripcionLabel, { marginTop: 15 }]}>Fecha</Text>
-                <Text style={styles.previewDescripcionText}>
-                  {previewCarta?.fechaEscritura || previewCarta?.fecha}
-                </Text>
-              </ScrollView>
             </View>
-            
-            <Pressable 
-              style={styles.abrirButton} 
-              onPress={() => {
-                setPreviewCarta(null);
-                if (previewCarta?.url) {
-                  Linking.openURL(previewCarta.url);
-                }
-              }}
-            >
-              <Text style={styles.abrirButtonText}>Abrir documento</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </View>
     </GestureHandlerRootView>
@@ -570,6 +641,19 @@ const styles = StyleSheet.create({
     elevation: 5,
     zIndex: 10,
   },
+  loadMoreButton: {
+    marginTop: 10,
+    marginBottom: 40,
+    alignSelf: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(255, 107, 157, 0.12)',
+    borderRadius: 12,
+  },
+  loadMoreText: {
+    color: '#FF6B9D',
+    fontWeight: '600',
+  },
   floatingButtonText: {
     fontSize: 30,
     color: '#FFFFFF',
@@ -692,6 +776,110 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 200,
   },
+  previewModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 245, 248, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 15,
+  },
+  previewCard: {
+    width: '100%',
+    height: '95%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  previewHeaderCard: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 15,
+    backgroundColor: '#FFF5F8',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 107, 157, 0.1)',
+  },
+  previewHeaderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  cartaAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 107, 157, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cartaAvatarText: {
+    fontSize: 28,
+  },
+  closeButtonCard: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 107, 157, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonCardText: {
+    fontSize: 18,
+    color: '#FF6B9D',
+    fontWeight: 'bold',
+  },
+  previewTitleCard: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 8,
+    lineHeight: 28,
+  },
+  previewFechaCard: {
+    fontSize: 14,
+    color: '#FF6B9D',
+    fontWeight: '500',
+  },
+  pdfContainerCard: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  pdfViewCard: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  previewFooterCard: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 107, 157, 0.1)',
+  },
+  previewDescripcionCard: {
+    maxHeight: 100,
+    marginBottom: 12,
+  },
+  previewDescripcionTextCard: {
+    fontSize: 14,
+    color: '#666666',
+    lineHeight: 20,
+  },
+  abrirButtonCard: {
+    backgroundColor: '#FF6B9D',
+    borderRadius: 25,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  abrirButtonTextCard: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   modalCard: {
     width: '85%',
     backgroundColor: '#FFFFFF',
@@ -757,91 +945,359 @@ const styles = StyleSheet.create({
   },
   previewModalCard: {
     width: '95%',
-    height: '85%',
-    backgroundColor: 'rgba(255, 245, 248, 0.98)',
-    borderRadius: 20,
-    padding: 15,
+    height: '90%',
+    backgroundColor: '#FFF5F8',
+    borderRadius: 24,
+    padding: 20,
   },
   previewHeader: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 5,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    zIndex: 10,
+    backgroundColor: 'rgba(255, 245, 248, 0.9)',
   },
   previewTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FF6B9D',
     flex: 1,
-    marginRight: 10,
+    textAlign: 'center',
+    marginHorizontal: 10,
+  },
+  pdfContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  previewOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 107, 157, 0.95)',
+    paddingHorizontal: 20,
+    paddingTop: 15,
+    paddingBottom: 35,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  overlayTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  overlayFecha: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  overlayDescripcion: {
+    maxHeight: 80,
+    marginBottom: 12,
+  },
+  overlayDescripcionText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    lineHeight: 20,
+    textAlign: 'center',
   },
   closeButton: {
-    padding: 5,
+    padding: 8,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   closeButtonText: {
-    fontSize: 24,
+    fontSize: 22,
     color: '#FF6B9D',
     fontWeight: 'bold',
   },
-  previewContent: {
-    flex: 1,
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  previewDocumento: {
-    flex: 1,
+  previewImageContainer: {
+    height: '55%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginRight: 10,
+    borderRadius: 16,
     overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 15,
   },
-  pdfViewer: {
-    flex: 1,
+  previewImagen: {
     width: '100%',
     height: '100%',
   },
-  previewPdfIcon: {
-    fontSize: 50,
+  pdfIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pdfIconEmoji: {
+    fontSize: 80,
     marginBottom: 10,
   },
-  previewPdfName: {
-    fontSize: 12,
-    color: '#333333',
-    textAlign: 'center',
-    marginBottom: 5,
+  pdfLabel: {
+    fontSize: 16,
+    color: '#FF6B9D',
+    fontWeight: '600',
   },
-  previewPdfTap: {
-    fontSize: 11,
+  pdfViewerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  pdfWebView: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+  },
+  pdfViewerTitle: {
+    fontSize: 14,
+    color: '#888888',
+    marginBottom: 20,
+  },
+  pdfViewerButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 107, 157, 0.1)',
+    borderRadius: 20,
+    padding: 30,
+    borderWidth: 2,
+    borderColor: '#FF6B9D',
+    borderStyle: 'dashed',
+  },
+  pdfViewerEmoji: {
+    fontSize: 60,
+    marginBottom: 15,
+  },
+  pdfViewerText: {
+    fontSize: 16,
+    color: '#FF6B9D',
+    fontWeight: '600',
+  },
+  previewInfoContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    borderRadius: 16,
+    padding: 15,
+  },
+  previewFechaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 107, 157, 0.2)',
+  },
+  previewFechaIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  previewFechaText: {
+    fontSize: 14,
     color: '#FF6B9D',
     fontWeight: '600',
   },
   previewDescripcion: {
     flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    borderRadius: 12,
-    padding: 12,
   },
   previewDescripcionLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#FF6B9D',
-    fontWeight: '600',
-    marginBottom: 5,
+    fontWeight: '700',
+    marginBottom: 6,
   },
   previewDescripcionText: {
     fontSize: 14,
-    color: '#333333',
-    lineHeight: 20,
+    color: '#444444',
+    lineHeight: 22,
   },
   abrirButton: {
-    backgroundColor: '#FF6B9D',
-    borderRadius: 12,
-    padding: 15,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 25,
+    paddingVertical: 14,
+    paddingHorizontal: 25,
     alignItems: 'center',
   },
   abrirButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: '#FF6B9D',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  previewCardLimpio: {
+    width: '95%',
+    maxHeight: '90%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  previewHeaderLimpio: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+    backgroundColor: '#FFF5F8',
+  },
+  previewTituloLimpio: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 8,
+    lineHeight: 28,
+  },
+  previewFechaLimpio: {
+    fontSize: 14,
+    color: '#FF6B9D',
     fontWeight: '600',
   },
+  previewDescripcionLimpio: {
+    maxHeight: 100,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  previewDescripcionTextoLimpio: {
+    fontSize: 14,
+    color: '#666666',
+    lineHeight: 20,
+  },
+  pdfContainerLimpio: {
+    flex: 1,
+    minHeight: 300,
+    backgroundColor: '#F5F5F5',
+  },
+  pdfWebViewLimpio: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  romanticoOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  romanticoCerrar: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  romanticoCerrarTexto: {
+    fontSize: 20,
+    color: '#666666',
+    fontWeight: '300',
+  },
+  romanticoTarjeta: {
+    width: '95%',
+    minHeight: 400,
+    maxHeight: '90%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingHorizontal: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  romanticoHeader: {
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
+  romanticoIcono: {
+    fontSize: 36,
+    marginBottom: 8,
+  },
+  romanticoTitulo: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#000000',
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 24,
+  },
+  romanticoFecha: {
+    fontSize: 12,
+    color: '#666666',
+    fontWeight: '400',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  romanticoDivider: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    marginVertical: 12,
+  },
+  romanticoVisorContainer: {
+    height: '55%',
+    minHeight: 350,
+    backgroundColor: 'transparent',
+  },
+  romanticoWebView: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  romanticoImageContainer: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  romanticoImageIcon: {
+    fontSize: 48,
+  },
+  romanticoImageText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#888888',
+  },
+  romanticoFooter: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    paddingBottom: 24,
+    backgroundColor: '#FFFFFF',
+  },
+  romanticoDescripcion: {
+    maxHeight: 100,
+  },
+  romanticoDescripcionTexto: {
+    fontSize: 14,
+    color: '#666666',
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  romanticoEtiqueta: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#000000',
+    marginBottom: 8,
+  },
+  romanticoBoton: {
+    backgroundColor: '#FF6B9D',
+    borderRadius: 30,
+    paddingVertical: 16,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  romanticoBotonTexto: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });
+  const [lastVisibleCartas, setLastVisibleCartas] = useState<any>(null);
+  const [moreLoadingCartas, setMoreLoadingCartas] = useState(false);
+  const [hasMoreCartas, setHasMoreCartas] = useState(true);
+  const CARTAS_PAGE = 12;
