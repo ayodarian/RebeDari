@@ -1,7 +1,9 @@
-import { View, Text, StyleSheet, Pressable, Modal, TextInput, Alert, ScrollView } from 'react-native';
-import { useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Modal, TextInput, Alert, ScrollView, Animated } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
 import { Dimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { db } from '../../lib/firebase';
+import { doc, onSnapshot, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 
 const { width } = Dimensions.get('window');
 const TAMANO_CASILLA = (width - 80) / 5;
@@ -25,6 +27,8 @@ const generarCasillasIniciales = (cantidad: number): Casilla[] => {
   }));
 };
 
+const BINGO_DOC_PATH = doc(db, 'bingo', 'board');
+
 export default function BingoScreen() {
   const [casillas, setCasillas] = useState<Casilla[]>(generarCasillasIniciales(25));
   const [modalVisible, setModalVisible] = useState(false);
@@ -36,6 +40,32 @@ export default function BingoScreen() {
   const [descripcionInput, setDescripcionInput] = useState('');
   const [filtroActual, setFiltroActual] = useState<'todos' | 'completados' | 'pendientes'>('todos');
   const insets = useSafeAreaInsets();
+  const animValues = useRef<Record<string, Animated.Value>>({}).current;
+
+  // porcentaje completado
+  const total = casillas.length || 1;
+  const completadas = casillas.filter(c => c.realizada).length;
+  const porcentaje = Math.round((completadas / total) * 100);
+
+  useEffect(() => {
+    // subscribir al documento de bingo en Firestore
+    const unsubscribe = onSnapshot(BINGO_DOC_PATH, async (snapshot) => {
+      if (!snapshot.exists()) {
+        // crear documento inicial si no existe
+        const inicial = generarCasillasIniciales(25);
+        await setDoc(BINGO_DOC_PATH, { casillas: inicial });
+        setCasillas(inicial);
+        return;
+      }
+
+      const data = snapshot.data();
+      if (data && Array.isArray(data.casillas)) {
+        setCasillas(data.casillas as Casilla[]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const getCasillasFiltradas = () => {
     switch (filtroActual) {
@@ -107,7 +137,6 @@ export default function BingoScreen() {
 
   const guardarCambios = () => {
     if (!selectedCasilla) return;
-    
     const actualizadas = casillas.map(c =>
       c.id === selectedCasilla.id ? {
         ...c,
@@ -115,13 +144,13 @@ export default function BingoScreen() {
         descripcion: descripcionInput,
       } : c
     );
-    setCasillas(actualizadas);
+    // guardar en servidor
+    updateDoc(BINGO_DOC_PATH, { casillas: actualizadas }).catch(err => console.error('Error guardando casillas', err));
     cerrarModal();
   };
 
   const confirmarRealizado = () => {
     if (!selectedCasilla) return;
-    
     const actualizadas = casillas.map(c =>
       c.id === selectedCasilla.id ? {
         ...c,
@@ -129,25 +158,37 @@ export default function BingoScreen() {
         fechaRealizado: new Date().toLocaleDateString('es-ES'),
       } : c
     );
-    setCasillas(actualizadas);
+    updateDoc(BINGO_DOC_PATH, { casillas: actualizadas }).catch(err => console.error('Error marcando realizado', err));
     cerrarModal();
   };
 
   const renderCasilla = (casilla: Casilla) => {
+    // animación al presionar
+    if (!animValues[casilla.id]) animValues[casilla.id] = new Animated.Value(1);
+    const scale = animValues[casilla.id];
+
     return (
       <Pressable
         key={casilla.id}
-        style={[styles.casilla, !casilla.realizada && styles.casillaNormal, casilla.realizada && styles.casillaRealizada]}
-        onPress={() => abrirCasilla(casilla)}
+        onPress={() => {
+          // animación de escala
+          Animated.sequence([
+            Animated.timing(scale, { toValue: 0.93, duration: 90, useNativeDriver: true }),
+            Animated.timing(scale, { toValue: 1, duration: 90, useNativeDriver: true }),
+          ]).start();
+          abrirCasilla(casilla);
+        }}
       >
-        <Text style={[styles.numeroCasilla, !casilla.realizada && styles.numeroNormal, casilla.realizada && styles.numeroRealizado]}>
-          {casilla.numero}
-        </Text>
-        {casilla.realizada && (
-          <View style={styles.palomita}>
-            <Text style={styles.palomitaTexto}>✓</Text>
-          </View>
-        )}
+        <Animated.View style={[styles.casilla, !casilla.realizada && styles.casillaNormal, casilla.realizada && styles.casillaRealizada, { transform: [{ scale }] }]}> 
+          <Text style={[styles.numeroCasilla, !casilla.realizada && styles.numeroNormal, casilla.realizada && styles.numeroRealizado]}>
+            {casilla.numero}
+          </Text>
+          {casilla.realizada && (
+            <View style={styles.palomita}>
+              <Text style={styles.palomitaTexto}>✓</Text>
+            </View>
+          )}
+        </Animated.View>
       </Pressable>
     );
   };
@@ -166,6 +207,13 @@ export default function BingoScreen() {
     <View style={[styles.container, { paddingTop: 5 }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Bingo</Text>
+      </View>
+
+      <View style={styles.progressContainer}>
+        <View style={styles.progressBarBackground}>
+          <View style={[styles.progressBarFill, { width: `${porcentaje}%` }]} />
+        </View>
+        <Text style={styles.progressText}>{porcentaje}% completado</Text>
       </View>
 
       {/* Filtros tipo tabs */}
@@ -338,6 +386,10 @@ const styles = StyleSheet.create({
   botonModalTexto: { fontSize: 14, fontWeight: '600', color: '#333333' },
   botonCerrar: { marginTop: 15, paddingVertical: 12, alignItems: 'center' },
   botonCerrarTexto: { fontSize: 14, color: '#FF6B9D', fontWeight: '600' },
+  progressContainer: { paddingHorizontal: 15, marginBottom: 12 },
+  progressBarBackground: { height: 10, backgroundColor: '#F5F5F5', borderRadius: 10, overflow: 'hidden' },
+  progressBarFill: { height: 10, backgroundColor: '#FF6B9D' },
+  progressText: { marginTop: 6, fontSize: 12, color: '#666666', textAlign: 'center' },
   
   // Estilos para filtros tipo tabs
   filtrosContainer: { flexDirection: 'row', paddingHorizontal: 15, marginBottom: 15, gap: 8 },
