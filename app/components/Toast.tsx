@@ -52,4 +52,4 @@ const styles = StyleSheet.create({
   text: { color: '#fff', fontWeight: '600' },
 });
 
-export default null;
+export default ToastProvider;

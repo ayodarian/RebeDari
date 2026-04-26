@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Dimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../../lib/firebase';
-import { COLORS } from '../styles/brand';
+import { COLORS } from '../../src/styles/brand';
 import { collection, doc, onSnapshot, setDoc, updateDoc, query, orderBy, getDocs, writeBatch, deleteDoc } from 'firebase/firestore';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { useToast } from '../components/Toast';
@@ -30,7 +30,10 @@ const generarCasillasIniciales = (cantidad: number): Casilla[] => {
   }));
 };
 
-const BINGO_CELLS_COLLECTION = collection(db, 'bingo_cells');
+const getBingoCollection = () => {
+  if (!db) throw new Error('Firestore no inicializado');
+  return collection(db, 'bingo_cells');
+};
 
 export default function BingoScreen() {
   const [casillas, setCasillas] = useState<Casilla[]>(generarCasillasIniciales(25));
@@ -54,17 +57,27 @@ export default function BingoScreen() {
 
   useEffect(() => {
     // subscribir a la colección de casillas
-    const q = query(BINGO_CELLS_COLLECTION, orderBy('numero', 'asc'));
+    let q;
+    try {
+      q = query(getBingoCollection(), orderBy('numero', 'asc'));
+    } catch (e) {
+      console.warn('Bingo: Firestore no inicializado al subscribir', e);
+      return;
+    }
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (snapshot.empty) {
         // crear casillas iniciales como documentos individuales
         const inicial = generarCasillasIniciales(25);
-        const batch = writeBatch(db);
-        inicial.forEach(c => {
-          const ref = doc(BINGO_CELLS_COLLECTION, c.id);
-          batch.set(ref, c);
-        });
-        batch.commit().catch(err => console.error('Error creando casillas iniciales', err));
+        try {
+          const batch = writeBatch(db!);
+          inicial.forEach(c => {
+            const ref = doc(getBingoCollection(), c.id);
+            batch.set(ref, c);
+          });
+          batch.commit().catch(err => console.error('Error creando casillas iniciales', err));
+        } catch (err) {
+          console.error('Error creando casillas iniciales (firestore no ready)', err);
+        }
         setCasillas(inicial);
         return;
       }
@@ -105,7 +118,11 @@ export default function BingoScreen() {
       realizada: false,
     };
     // guardar en Firestore como documento individual
-    setDoc(doc(BINGO_CELLS_COLLECTION, nuevaCasilla.id), nuevaCasilla).catch(err => console.error('Error creando casilla', err));
+    try {
+      setDoc(doc(getBingoCollection(), nuevaCasilla.id), nuevaCasilla).catch(err => console.error('Error creando casilla', err));
+    } catch (e) {
+      console.warn('No se pudo crear casilla: Firestore no inicializado', e);
+    }
   };
 
   const eliminarCasilla = (id: string) => {
@@ -121,12 +138,16 @@ export default function BingoScreen() {
             const filtrada = casillas.filter(c => c.id !== id);
             const reindexadas = reindexarCasillas(filtrada);
             // eliminar documento y actualizar numeros por batch
-            const batch = writeBatch(db);
-            reindexadas.forEach(c => {
-              batch.set(doc(BINGO_CELLS_COLLECTION, c.id), c);
-            });
-            batch.delete(doc(BINGO_CELLS_COLLECTION, id));
-            batch.commit().catch(err => console.error('Error eliminando casilla', err));
+            try {
+              const batch = writeBatch(db!);
+              reindexadas.forEach(c => {
+                batch.set(doc(getBingoCollection(), c.id), c);
+              });
+              batch.delete(doc(getBingoCollection(), id));
+              batch.commit().catch(err => console.error('Error eliminando casilla', err));
+            } catch (e) {
+              console.warn('No se pudo eliminar casilla: Firestore no inicializado', e);
+            }
             setModoEliminar(false);
           },
         },
@@ -163,7 +184,11 @@ export default function BingoScreen() {
     );
     // guardar solo la casilla modificada
     const updated = actualizadas.find(c => c.id === selectedCasilla.id)!;
-    updateDoc(doc(BINGO_CELLS_COLLECTION, updated.id), { titulo: updated.titulo, descripcion: updated.descripcion }).catch(err => console.error('Error guardando casilla', err));
+    try {
+      updateDoc(doc(getBingoCollection(), updated.id), { titulo: updated.titulo, descripcion: updated.descripcion }).catch(err => console.error('Error guardando casilla', err));
+    } catch (e) {
+      console.warn('No se pudo guardar casilla: Firestore no inicializado', e);
+    }
     cerrarModal();
   };
 
@@ -177,7 +202,11 @@ export default function BingoScreen() {
       } : c
     );
     const updated = actualizadas.find(c => c.id === selectedCasilla.id)!;
-    updateDoc(doc(BINGO_CELLS_COLLECTION, updated.id), { realizada: true, fechaRealizado: updated.fechaRealizado }).catch(err => console.error('Error marcando realizado', err));
+    try {
+      updateDoc(doc(getBingoCollection(), updated.id), { realizada: true, fechaRealizado: updated.fechaRealizado }).catch(err => console.error('Error marcando realizado', err));
+    } catch (e) {
+      console.warn('No se pudo actualizar realización: Firestore no inicializado', e);
+    }
     // mostrar toast y posible confetti
     toast.show('Plan marcado como realizado');
     if (porcentaje >= 100) setShowConfetti(true);

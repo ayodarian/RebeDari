@@ -156,6 +156,10 @@ export default function FeedScreen() {
   const [editingCaption, setEditingCaption] = useState('');
   const [photoOptionsId, setPhotoOptionsId] = useState<string | null>(null);
   const [actionModalVisible, setActionModalVisible] = useState(false);
+  const [lastVisiblePhotos, setLastVisiblePhotos] = useState<any>(null);
+  const [moreLoadingPhotos, setMoreLoadingPhotos] = useState(false);
+  const [hasMorePhotos, setHasMorePhotos] = useState(true);
+  const PHOTOS_PAGE = 12;
 
   useEffect(() => {
     const photosQuery = query(collection(db, 'fotos'), orderBy('created_at', 'desc'), limit(PHOTOS_PAGE));
@@ -1207,7 +1211,3 @@ buttonRow: {
     color: '#666666',
   },
 });
-  const [lastVisiblePhotos, setLastVisiblePhotos] = useState<any>(null);
-  const [moreLoadingPhotos, setMoreLoadingPhotos] = useState(false);
-  const [hasMorePhotos, setHasMorePhotos] = useState(true);
-  const PHOTOS_PAGE = 12;

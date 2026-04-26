@@ -12,6 +12,10 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
+    if (!auth) {
+      // Si auth no está inicializado, no intentamos suscribirnos y permitimos acceso a auth route
+      return;
+    }
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user && pathname !== '/(auth)') {
         router.replace('/(auth)');

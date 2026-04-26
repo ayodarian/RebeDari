@@ -41,7 +41,14 @@
       "router": {},
       "eas": {
         "projectId": "7c6a1210-1bd6-4506-a28e-e7310a240f15"
-      }
+      },
+      "EXPO_FIREBASE_API_KEY": "AIzaSyAc2KbGat-UmdAMKbuspFMWGeTdoC7Udl4",
+      "EXPO_FIREBASE_AUTH_DOMAIN": "rebedari-a80a7.firebaseapp.com",
+      "EXPO_FIREBASE_PROJECT_ID": "rebedari-a80a7",
+      "EXPO_FIREBASE_STORAGE_BUCKET": "rebedari-a80a7.firebasestorage.app",
+      "EXPO_FIREBASE_MESSAGING_SENDER_ID": "633589150602",
+      "EXPO_FIREBASE_APP_ID": "1:633589150602:web:0082e96e092945d278ce73",
+      "EXPO_FIREBASE_MEASUREMENT_ID": "G-RWN5C7P0PF"
     }
   }
 }

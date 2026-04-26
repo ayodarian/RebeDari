@@ -2,43 +2,57 @@ import { initializeApp } from 'firebase/app';
 import { getStorage } from 'firebase/storage';
 import { getFirestore } from 'firebase/firestore';
 import { initializeAuth, inMemoryPersistence } from 'firebase/auth';
+import Constants from 'expo-constants';
 
-// Intentamos usar persistencia nativa de React Native (AsyncStorage).
-// Si por alguna razón no está disponible, caeremos a inMemoryPersistence.
-let nativePersistence: any = null;
-try {
-  // import dinámico para evitar romper builds web donde el adaptador no exista
-  // @ts-ignore
-  const { getReactNativePersistence } = require('firebase/auth/react-native');
-  // @ts-ignore
-  const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-  if (getReactNativePersistence && AsyncStorage) {
-    nativePersistence = getReactNativePersistence(AsyncStorage);
-  }
-} catch (e) {
-  // No hacemos nada; usaremos inMemoryPersistence como respaldo
-}
-
-// Leer configuración desde variables de entorno. Mantén .env con estas claves.
-const firebaseConfig = {
-  apiKey: process.env.EXPO_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || '',
-  authDomain: process.env.EXPO_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_AUTH_DOMAIN || '',
-  projectId: process.env.EXPO_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || '',
-  storageBucket: process.env.EXPO_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: process.env.EXPO_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: process.env.EXPO_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID || '',
-  measurementId: process.env.EXPO_FIREBASE_MEASUREMENT_ID || process.env.FIREBASE_MEASUREMENT_ID || '',
+const getEnvVar = (key: string): string => {
+  return (Constants.expoConfig?.extra as any)?.[key] || (Constants.manifest?.extra as any)?.[key] || '';
 };
 
-const app = initializeApp(firebaseConfig);
-export const storage = getStorage(app);
-export const db = getFirestore(app);
+const firebaseConfig = {
+  apiKey: getEnvVar('EXPO_FIREBASE_API_KEY') || getEnvVar('FIREBASE_API_KEY'),
+  authDomain: getEnvVar('EXPO_FIREBASE_AUTH_DOMAIN') || getEnvVar('FIREBASE_AUTH_DOMAIN'),
+  projectId: getEnvVar('EXPO_FIREBASE_PROJECT_ID') || getEnvVar('FIREBASE_PROJECT_ID'),
+  storageBucket: getEnvVar('EXPO_FIREBASE_STORAGE_BUCKET') || getEnvVar('FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: getEnvVar('EXPO_FIREBASE_MESSAGING_SENDER_ID') || getEnvVar('FIREBASE_MESSAGING_SENDER_ID'),
+  appId: getEnvVar('EXPO_FIREBASE_APP_ID') || getEnvVar('FIREBASE_APP_ID'),
+  measurementId: getEnvVar('EXPO_FIREBASE_MEASUREMENT_ID') || getEnvVar('FIREBASE_MEASUREMENT_ID'),
+};
 
-export const auth = initializeAuth(app, {
-  persistence: nativePersistence || inMemoryPersistence,
-});
+export let app: any = null;
+export let storage: any = null;
+export let db: any = null;
+export let auth: any = null;
+export let firebaseReady = false;
+
+function hasRequiredConfig(cfg: typeof firebaseConfig) {
+  return !!(cfg.apiKey && cfg.projectId && cfg.appId);
+}
+
+if (!hasRequiredConfig(firebaseConfig)) {
+  console.warn('[firebase] Firebase no inicializado: faltan variables de entorno. Define EXPO_FIREBASE_API_KEY, EXPO_FIREBASE_PROJECT_ID y EXPO_FIREBASE_APP_ID');
+} else {
+  try {
+    app = initializeApp(firebaseConfig);
+    storage = getStorage(app);
+    db = getFirestore(app);
+
+    try {
+      auth = initializeAuth(app, {
+        persistence: inMemoryPersistence,
+      });
+    } catch (authErr) {
+      console.warn('[firebase] initializeAuth no disponible o falló:', authErr);
+      auth = null;
+    }
+
+    firebaseReady = true;
+  } catch (err) {
+    console.error('[firebase] Error inicializando Firebase:', err);
+  }
+}
 
 export const uploadFile = async (uri: string, path: string): Promise<string> => {
+  if (!storage) throw new Error('Firebase Storage no inicializado. Revisa tus variables de entorno.');
   const { ref, uploadBytesResumable, getDownloadURL } = await import('firebase/storage');
   
   const storageRef = ref(storage, path);
@@ -87,6 +101,7 @@ export const uploadFile = async (uri: string, path: string): Promise<string> => 
 };
 
 export const deleteFile = async (path: string): Promise<void> => {
+  if (!storage) throw new Error('Firebase Storage no inicializado. Revisa tus variables de entorno.');
   const { ref, deleteObject } = await import('firebase/storage');
   const storageRef = ref(storage, path);
   await deleteObject(storageRef);

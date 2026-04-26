@@ -40,6 +40,10 @@ export default function CartasScreen() {
   const [descripcionTemp, setDescripcionTemp] = useState('');
   const [tituloCartaTemp, setTituloCartaTemp] = useState('');
   const [previewCarta, setPreviewCarta] = useState<Carta | null>(null);
+  const [lastVisibleCartas, setLastVisibleCartas] = useState<any>(null);
+  const [moreLoadingCartas, setMoreLoadingCartas] = useState(false);
+  const [hasMoreCartas, setHasMoreCartas] = useState(true);
+  const CARTAS_PAGE = 12;
 
   useEffect(() => {
     const cartasQuery = query(
@@ -1301,7 +1305,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-  const [lastVisibleCartas, setLastVisibleCartas] = useState<any>(null);
-  const [moreLoadingCartas, setMoreLoadingCartas] = useState(false);
-  const [hasMoreCartas, setHasMoreCartas] = useState(true);
-  const CARTAS_PAGE = 12;
