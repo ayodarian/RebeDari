@@ -46,6 +46,8 @@ export default function CartasScreen() {
   const CARTAS_PAGE = 12;
 
   useEffect(() => {
+    if (!db) return;
+
     const cartasQuery = query(
       collection(db, 'cartas'),
       where('remitente', '==', pestanaActiva),
@@ -89,7 +91,7 @@ export default function CartasScreen() {
   }, [pestanaActiva, filterMode]);
 
   const loadMoreCartas = async () => {
-    if (!hasMoreCartas || moreLoadingCartas || !lastVisibleCartas) return;
+    if (!hasMoreCartas || moreLoadingCartas || !lastVisibleCartas || !db) return;
     setMoreLoadingCartas(true);
     try {
       const moreQuery = query(collection(db, 'cartas'), where('remitente', '==', pestanaActiva), orderBy('created_at', 'desc'), startAfter(lastVisibleCartas), limit(CARTAS_PAGE));

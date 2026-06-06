@@ -6,7 +6,7 @@ import Slider from '@react-native-community/slider';
 import * as ImagePicker from 'expo-image-picker';
 import { getInfoAsync } from 'expo-file-system/legacy';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc, getDocs, limit, startAfter } from 'firebase/firestore';
-import { COLORS } from '../styles/brand';
+import { COLORS } from '../../src/styles/brand';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
 
 const { width, height } = Dimensions.get('window');
@@ -266,6 +266,10 @@ export default function ReelsScreen() {
 
   useEffect(() => {
     // carga inicial con límite
+    if (!db) {
+      console.warn('Reels: Firestore no inicializado, omitiendo suscripción inicial');
+      return;
+    }
     const videosQuery = query(collection(db, 'videos'), orderBy('created_at', 'desc'), limit(PAGE_SIZE));
     const unsubscribe = onSnapshot(videosQuery, (snapshot) => {
       const videosData = snapshot.docs.map(doc => ({
@@ -288,6 +292,7 @@ export default function ReelsScreen() {
     if (!hasMore || moreLoading || !lastVisible) return;
     setMoreLoading(true);
     try {
+      if (!db) return;
       const moreQuery = query(collection(db, 'videos'), orderBy('created_at', 'desc'), startAfter(lastVisible), limit(PAGE_SIZE));
       const snap = await getDocs(moreQuery);
       const newVideos = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as VideoItem[];

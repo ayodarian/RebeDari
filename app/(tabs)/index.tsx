@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, FlatList, Pressable, ScrollView, Modal, Alert, Dimensions, TextInput, Image, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, ScrollView, Modal, Alert, Dimensions, TextInput, Image, ActivityIndicator, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -131,7 +131,7 @@ const getMensajeAleatorio = (categoria: string): string => {
     case 'enojada': mensajes = mensajesEnojada; break;
     case 'extrano': mensajes = mensajesExtrano; break;
   }
-  const indice = Math.floor(Math.random() * 15);
+  const indice = Math.floor(Math.random() * mensajes.length);
   return mensajes[indice];
 };
 
@@ -150,6 +150,7 @@ export default function FeedScreen() {
   const [newTrip, setNewTrip] = useState({ date: '', place: '', desc: '' });
   const [tripImage, setTripImage] = useState<string | null>(null);
   const [uploadingTrip, setUploadingTrip] = useState(false);
+  const [bitacoraTab, setBitacoraTab] = useState<'crear' | 'ver'>('crear');
   
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [editingPhotoId, setEditingPhotoId] = useState<string | null>(null);
@@ -162,6 +163,8 @@ export default function FeedScreen() {
   const PHOTOS_PAGE = 12;
 
   useEffect(() => {
+    if (!db) return;
+
     const photosQuery = query(collection(db, 'fotos'), orderBy('created_at', 'desc'), limit(PHOTOS_PAGE));
     const unsubscribePhotos = onSnapshot(photosQuery, (snapshot) => {
       const photosData = snapshot.docs.map(doc => ({
@@ -175,23 +178,23 @@ export default function FeedScreen() {
       } else setHasMorePhotos(false);
     });
 
-    const tripsQuery = query(collection(db, 'bitacora'), orderBy('date', 'desc'));
-    const unsubscribeTrips = onSnapshot(tripsQuery, (snapshot) => {
+    const tripsQuery = db ? query(collection(db, 'bitacora'), orderBy('date', 'desc')) : null;
+    const unsubscribeTrips = tripsQuery ? onSnapshot(tripsQuery, (snapshot) => {
       const tripsData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Trip[];
       setTrips(tripsData);
-    });
+    }) : null;
 
     return () => {
       unsubscribePhotos();
-      unsubscribeTrips();
+      unsubscribeTrips?.();
     };
   }, []);
 
   const loadMorePhotos = async () => {
-    if (!hasMorePhotos || moreLoadingPhotos || !lastVisiblePhotos) return;
+    if (!hasMorePhotos || moreLoadingPhotos || !lastVisiblePhotos || !db) return;
     setMoreLoadingPhotos(true);
     try {
       const moreQuery = query(collection(db, 'fotos'), orderBy('created_at', 'desc'), startAfter(lastVisiblePhotos), limit(PHOTOS_PAGE));
@@ -237,12 +240,15 @@ export default function FeedScreen() {
 
   const openModal = (type: ModalType) => {
     setModalType(type);
+    if (type === 'bitacora') setBitacoraTab('crear');
     setModalVisible(true);
   };
 
   const closeModal = () => {
     setModalVisible(false);
     setModalType(null);
+    setNewTrip({ date: '', place: '', desc: '' });
+    setTripImage(null);
   };
 
   const showCartaMensaje = (categoria: string) => {
@@ -338,6 +344,7 @@ export default function FeedScreen() {
       
       setNewTrip({ date: '', place: '', desc: '' });
       setTripImage(null);
+      setBitacoraTab('ver');
     } catch (error) {
       Alert.alert('Error', 'No se pudo guardar la aventura');
       console.error(error);
@@ -425,78 +432,154 @@ export default function FeedScreen() {
     
     if (modalType === 'bitacora') {
       return (
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Bitácora</Text>
-          
-          <View style={styles.formContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Fecha (dd/mm/aaaa)"
-              placeholderTextColor="#8E8E93"
-              value={newTrip.date}
-              onChangeText={(text) => setNewTrip({ ...newTrip, date: text })}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Lugar"
-              placeholderTextColor="#8E8E93"
-              value={newTrip.place}
-              onChangeText={(text) => setNewTrip({ ...newTrip, place: text })}
-            />
-            <TextInput
-              style={[styles.input, styles.inputMultiline]}
-              placeholder="Descripción"
-              placeholderTextColor="#8E8E93"
-              value={newTrip.desc}
-              onChangeText={(text) => setNewTrip({ ...newTrip, desc: text })}
-              multiline
-            />
-            
-            <View style={styles.cameraRow}>
-              <Pressable style={styles.cameraButton} onPress={takePhoto}>
-                <Text style={styles.cameraButtonText}>📷 Cámara</Text>
-              </Pressable>
-              {tripImage && (
-                <Image source={{ uri: tripImage }} style={styles.thumbnailPreview} />
-              )}
-            </View>
-            
-            <Pressable 
-              style={[styles.agregarButton, uploadingTrip && styles.agregarButtonDisabled]} 
-              onPress={agregarTrip}
-              disabled={uploadingTrip}
+        <View style={[styles.modalContent, styles.bitacoraContent]}>
+          <View style={styles.bitacoraTabs}>
+            <Pressable
+              style={[styles.bitacoraTab, bitacoraTab === 'crear' && styles.bitacoraTabActive]}
+              onPress={() => setBitacoraTab('crear')}
             >
-              {uploadingTrip ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.agregarButtonText}>Agregar Aventura</Text>
-              )}
+              <Text
+                style={[styles.bitacoraTabText, bitacoraTab === 'crear' && styles.bitacoraTabTextActive]}
+                numberOfLines={1}
+              >
+                ✏️ Crear
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.bitacoraTab, bitacoraTab === 'ver' && styles.bitacoraTabActive]}
+              onPress={() => setBitacoraTab('ver')}
+            >
+              <Text
+                style={[styles.bitacoraTabText, bitacoraTab === 'ver' && styles.bitacoraTabTextActive]}
+                numberOfLines={1}
+              >
+                🗺️ Mis Aventuras {trips.length > 0 ? `(${trips.length})` : ''}
+              </Text>
             </Pressable>
           </View>
-          
-          <ScrollView style={styles.tripsList}>
-            {trips.length === 0 ? (
-              <Text style={styles.sinAventuras}>Sin aventuras registradas</Text>
-            ) : (
-              trips.map((trip) => (
-                <View key={trip.id} style={styles.tripItem}>
-                  {trip.imageUrl && (
-                    <TouchableOpacity onPress={() => setSelectedPhoto(trip.imageUrl!)}>
-                      <Image source={{ uri: trip.imageUrl }} style={styles.tripThumbnail} />
-                    </TouchableOpacity>
-                  )}
-                  <View style={styles.tripInfo}>
-                    <Text style={styles.tripDate}>{trip.date}</Text>
-                    <Text style={styles.tripPlace}>{trip.place}</Text>
-                    <Text style={styles.tripDesc}>{trip.desc}</Text>
-                  </View>
-                  <Pressable style={styles.eliminarButton} onPress={() => eliminarTrip(trip)}>
-                    <Text style={styles.eliminarButtonText}>🗑️</Text>
-                  </Pressable>
+
+          {bitacoraTab === 'crear' ? (
+            <KeyboardAvoidingView
+              style={styles.bitacoraKAV}
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+            >
+              <ScrollView
+                style={styles.bitacoraFormScroll}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.bitacoraForm}>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>📅 Fecha</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="dd/mm/aaaa"
+                    placeholderTextColor="#B0B0B5"
+                    value={newTrip.date}
+                    onChangeText={(text) => setNewTrip({ ...newTrip, date: text })}
+                  />
                 </View>
-              ))
-            )}
-          </ScrollView>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>📍 Lugar</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="¿Dónde fue?"
+                    placeholderTextColor="#B0B0B5"
+                    value={newTrip.place}
+                    onChangeText={(text) => setNewTrip({ ...newTrip, place: text })}
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>💬 Descripción</Text>
+                  <TextInput
+                    style={[styles.input, styles.inputMultiline]}
+                    placeholder="Cuéntame qué hicieron..."
+                    placeholderTextColor="#B0B0B5"
+                    value={newTrip.desc}
+                    onChangeText={(text) => setNewTrip({ ...newTrip, desc: text })}
+                    multiline
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>📷 Foto (opcional)</Text>
+                  <View style={styles.photoPickerRow}>
+                    <Pressable style={styles.photoPickerButton} onPress={takePhoto}>
+                      <Text style={styles.photoPickerButtonText}>📷 Tomar foto</Text>
+                    </Pressable>
+                    {tripImage ? (
+                      <View style={styles.photoPreviewWrapper}>
+                        <Image source={{ uri: tripImage }} style={styles.photoPreview} />
+                        <Pressable style={styles.photoRemoveButton} onPress={() => setTripImage(null)}>
+                          <Text style={styles.photoRemoveText}>✕</Text>
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <View style={styles.tripPhotoThumb}>
+                        <Text style={styles.tripPhotoThumbText}>Sin foto</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                <Pressable
+                  style={[styles.saveTripButton, uploadingTrip && styles.agregarButtonDisabled]}
+                  onPress={agregarTrip}
+                  disabled={uploadingTrip}
+                >
+                  {uploadingTrip ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.saveTripButtonText}>💖 Guardar Aventura</Text>
+                  )}
+                </Pressable>
+                </View>
+              </ScrollView>
+            </KeyboardAvoidingView>
+          ) : (
+            <ScrollView
+              style={styles.tripsListScroll}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {trips.length === 0 ? (
+                <View style={styles.emptyAventuras}>
+                  <Text style={styles.emptyAventurasIcon}>🗺️</Text>
+                  <Text style={styles.emptyAventurasText}>Sin aventuras aún</Text>
+                  <Text style={styles.emptyAventurasHint}>Ve a "Crear" para registrar tu primera aventura</Text>
+                </View>
+              ) : (
+                trips.map((trip) => (
+                  <View key={trip.id} style={styles.tripCard}>
+                    {trip.imageUrl ? (
+                      <TouchableOpacity onPress={() => setSelectedPhoto(trip.imageUrl!)}>
+                        <Image source={{ uri: trip.imageUrl }} style={styles.tripCardImage} />
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.tripCardImagePlaceholder}>
+                        <Text style={styles.tripCardPlaceholderIcon}>📍</Text>
+                      </View>
+                    )}
+                    <View style={styles.tripCardContent}>
+                      <View style={styles.tripCardHeader}>
+                        <Text style={styles.tripCardDate}>{trip.date}</Text>
+                        <Pressable style={styles.tripCardDelete} onPress={() => eliminarTrip(trip)}>
+                          <Text style={styles.tripCardDeleteText}>🗑️</Text>
+                        </Pressable>
+                      </View>
+                      <Text style={styles.tripCardPlace} numberOfLines={1}>{trip.place}</Text>
+                      {trip.desc ? (
+                        <Text style={styles.tripCardDesc} numberOfLines={3}>{trip.desc}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          )}
         </View>
       );
     }
@@ -624,11 +707,21 @@ export default function FeedScreen() {
         onRequestClose={closeModal}
       >
         <Pressable style={styles.modalOverlay} onPress={closeModal}>
-          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={[styles.modalCard, modalType === 'bitacora' && styles.modalCardLarge]} onPress={(e) => e.stopPropagation()}>
+            {modalType === 'bitacora' && (
+              <View style={styles.bitacoraHeader}>
+                <Text style={styles.bitacoraHeaderTitle}>📔 Bitácora</Text>
+                <Pressable style={styles.bitacoraHeaderClose} onPress={closeModal}>
+                  <Text style={styles.bitacoraHeaderCloseText}>✕</Text>
+                </Pressable>
+              </View>
+            )}
             {renderModalContent()}
-            <Pressable style={styles.closeButton} onPress={closeModal}>
-              <Text style={styles.closeButtonText}>Cerrar</Text>
-            </Pressable>
+            {modalType !== 'bitacora' && (
+              <Pressable style={styles.closeButton} onPress={closeModal}>
+                <Text style={styles.closeButtonText}>Cerrar</Text>
+              </Pressable>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -832,6 +925,41 @@ buttonRow: {
     padding: 25,
     alignItems: 'center',
   },
+  modalCardLarge: {
+    flex: 1,
+    maxHeight: '88%',
+    padding: 0,
+    alignItems: 'stretch',
+  },
+  bitacoraHeader: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 107, 157, 0.15)',
+  },
+  bitacoraHeaderTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FF6B9D',
+  },
+  bitacoraHeaderClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 107, 157, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bitacoraHeaderCloseText: {
+    fontSize: 16,
+    color: '#FF6B9D',
+    fontWeight: 'bold',
+  },
   modalContent: {
     alignItems: 'center',
     width: '100%',
@@ -942,78 +1070,261 @@ buttonRow: {
     color: '#333333',
     textAlign: 'center',
   },
-  formContainer: {
-    width: '100%',
-    marginBottom: 15,
-  },
   input: {
     width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    borderRadius: 10,
+    backgroundColor: '#F8F8FA',
+    borderRadius: 12,
     paddingHorizontal: 15,
-    paddingVertical: 12,
-    fontSize: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 107, 157, 0.3)',
-  },
-  inputMultiline: {
-    minHeight: 60,
-    textAlignVertical: 'top',
-  },
-  agregarButton: {
-    width: '100%',
-    paddingVertical: 14,
-    backgroundColor: '#FF6B9D',
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 5,
-  },
-  agregarButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  tripsList: {
-    width: '100%',
-    maxHeight: 200,
-  },
-  sinAventuras: {
-    textAlign: 'center',
-    color: '#8E8E93',
-    fontSize: 14,
-    paddingVertical: 20,
-  },
-  tripItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
-  },
-  tripInfo: {
-    flex: 1,
-  },
-  tripDate: {
-    fontSize: 12,
-    color: '#FF6B9D',
-    fontWeight: 'bold',
-  },
-  tripPlace: {
-    fontSize: 16,
-    fontWeight: '600',
+    paddingVertical: 13,
+    fontSize: 15,
+    marginBottom: 0,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 107, 157, 0.2)',
     color: '#333333',
   },
-  tripDesc: {
-    fontSize: 14,
+  inputMultiline: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+    paddingTop: 13,
+  },
+  agregarButtonDisabled: {
+    opacity: 0.6,
+  },
+
+  // === BITÁCORA: TABS ===
+  bitacoraContent: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'stretch',
+    paddingTop: 16,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  bitacoraTabs: {
+    flexDirection: 'row',
+    width: '100%',
+    backgroundColor: 'rgba(255, 107, 157, 0.08)',
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 16,
+    gap: 4,
+  },
+  bitacoraTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bitacoraTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#FF6B9D',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  bitacoraTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#999999',
+  },
+  bitacoraTabTextActive: {
+    color: '#FF6B9D',
+    fontWeight: '700',
+  },
+
+  // === BITÁCORA: FORM ===
+  bitacoraKAV: {
+    flex: 1,
+    width: '100%',
+  },
+  bitacoraFormScroll: {
+    width: '100%',
+    flex: 1,
+  },
+  bitacoraForm: {
+    width: '100%',
+    paddingHorizontal: 4,
+    paddingBottom: 10,
+  },
+  fieldGroup: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
     color: '#666666',
+    marginBottom: 8,
   },
-  eliminarButton: {
-    padding: 8,
+  photoPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  eliminarButtonText: {
-    fontSize: 18,
+  photoPickerButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255, 107, 157, 0.12)',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 107, 157, 0.25)',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+  },
+  photoPickerButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FF6B9D',
+  },
+  photoPreviewWrapper: {
+    position: 'relative',
+  },
+  photoPreview: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+  },
+  photoRemoveButton: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FF3B30',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  photoRemoveText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 'bold',
+    lineHeight: 14,
+  },
+  tripPhotoThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#F0F0F3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  tripPhotoThumbText: {
+    fontSize: 9,
+    color: '#999999',
+  },
+  saveTripButton: {
+    width: '100%',
+    paddingVertical: 16,
+    backgroundColor: '#FF6B9D',
+    borderRadius: 14,
+    alignItems: 'center',
+    marginTop: 6,
+    shadowColor: '#FF6B9D',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  saveTripButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold',
+    letterSpacing: 0.3,
+  },
+
+  // === BITÁCORA: LISTADO DE AVENTURAS ===
+  tripsListScroll: {
+    width: '100%',
+    flex: 1,
+  },
+  emptyAventuras: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyAventurasIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+    opacity: 0.6,
+  },
+  emptyAventurasText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666666',
+    marginBottom: 6,
+  },
+  emptyAventurasHint: {
+    fontSize: 13,
+    color: '#999999',
+    textAlign: 'center',
+  },
+  tripCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginBottom: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 157, 0.08)',
+  },
+  tripCardImage: {
+    width: '100%',
+    height: 140,
+  },
+  tripCardImagePlaceholder: {
+    width: '100%',
+    height: 60,
+    backgroundColor: 'rgba(255, 107, 157, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tripCardPlaceholderIcon: {
+    fontSize: 24,
+  },
+  tripCardContent: {
+    padding: 14,
+  },
+  tripCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  tripCardDate: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FF6B9D',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  tripCardDelete: {
+    padding: 4,
+  },
+  tripCardDeleteText: {
+    fontSize: 16,
+  },
+  tripCardPlace: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#222222',
+    marginBottom: 4,
+  },
+  tripCardDesc: {
+    fontSize: 13,
+    color: '#666666',
+    lineHeight: 18,
   },
   closeButton: {
     marginTop: 20,
@@ -1082,36 +1393,6 @@ buttonRow: {
     fontSize: 18,
     color: '#8E8E93',
     paddingHorizontal: 4,
-  },
-  cameraRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
-  },
-  cameraButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    backgroundColor: 'rgba(255, 182, 193, 0.3)',
-    borderRadius: 10,
-  },
-  cameraButtonText: {
-    fontSize: 14,
-    color: '#333333',
-  },
-  thumbnailPreview: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-  },
-  tripThumbnail: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    marginRight: 10,
-  },
-  agregarButtonDisabled: {
-    opacity: 0.6,
   },
   fullImageOverlay: {
     flex: 1,

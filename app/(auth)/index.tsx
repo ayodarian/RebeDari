@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, TextInput, Pressable, Alert, KeyboardAvoidingVi
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useAppStore } from '../../store/index';
-import { PrimaryButton, COLORS } from '../styles/brand';
+import { PrimaryButton, COLORS } from '../../src/styles/brand';
 
 export default function LoginScreen() {
   const router = useRouter();

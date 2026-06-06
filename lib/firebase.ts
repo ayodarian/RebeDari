@@ -4,6 +4,19 @@ import { getFirestore } from 'firebase/firestore';
 import { initializeAuth, inMemoryPersistence } from 'firebase/auth';
 import Constants from 'expo-constants';
 
+let nativePersistence: any = null;
+try {
+  // @ts-ignore
+  const { getReactNativePersistence } = require('firebase/auth/react-native');
+  // @ts-ignore
+  const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+  if (getReactNativePersistence && AsyncStorage) {
+    nativePersistence = getReactNativePersistence(AsyncStorage);
+  }
+} catch (e) {
+  // Fallback a inMemoryPersistence
+}
+
 const getEnvVar = (key: string): string => {
   return (Constants.expoConfig?.extra as any)?.[key] || (Constants.manifest?.extra as any)?.[key] || '';
 };
@@ -38,7 +51,7 @@ if (!hasRequiredConfig(firebaseConfig)) {
 
     try {
       auth = initializeAuth(app, {
-        persistence: inMemoryPersistence,
+        persistence: nativePersistence || inMemoryPersistence,
       });
     } catch (authErr) {
       console.warn('[firebase] initializeAuth no disponible o falló:', authErr);
