@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isCoupleMember() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return userDoc != null
+          && userDoc.data.sessionId is string
+          && exists(/databases/$(database)/documents/sessions/$(userDoc.data.sessionId))
+          && get(/databases/$(database)/documents/sessions/$(userDoc.data.sessionId)).data.members.hasAny([request.auth.uid]);
+    }
+
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /sessions/{sessionId} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.members.hasAny([request.auth.uid])
+                    && request.resource.data.members.size() <= 2;
+      allow update: if request.auth != null
+                    && isCoupleMember()
+                    && request.resource.data.members.size() <= 2;
+      allow delete: if false;
+    }
+
+    match /bingo_cells/{cellId} {
+      allow read, write, delete: if request.auth != null && isCoupleMember();
+    }
+
+    match /bitacora/{tripId} {
+      allow read, write, delete: if request.auth != null && isCoupleMember();
+    }
+
+    match /fotos/{fotoId} {
+      allow read, write, delete: if request.auth != null && isCoupleMember();
+    }
+
+    match /cartas/{cartaId} {
+      allow read, write, delete: if request.auth != null && isCoupleMember();
+    }
+
+    match /videos/{videoId} {
+      allow read, write, delete: if request.auth != null && isCoupleMember();
+    }
+
+    match /bingo_meta/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+  }
+}

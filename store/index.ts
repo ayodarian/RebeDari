@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, User } from 'firebase/auth';
 import { auth, db, firebaseReady } from '../lib/firebase';
-import { collection, query, where, orderBy, limit, getDocs, doc, setDoc, runTransaction, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, getDoc, doc, setDoc, runTransaction, updateDoc, deleteDoc } from 'firebase/firestore';
 
 interface UserData {
   id: string;
@@ -81,17 +81,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         joinedSessionId = newDoc.id;
       }
 
-      // leer la sesión final para obtener partnerId si existe
       const sessionRef = doc(db, 'sessions', joinedSessionId);
-      const sessionSnapFinal = await getDocs(query(collection(db, 'sessions')));
-      // mejor leer el documento directamente
-      const finalSnap = await (await import('firebase/firestore')).getDoc(sessionRef).catch(() => null);
+      const finalSnap = await getDoc(sessionRef).catch(() => null);
       let partnerId: string | null = null;
       if (finalSnap && finalSnap.exists()) {
         const sdata: any = finalSnap.data();
         const members: string[] = sdata.members || [];
         partnerId = members.find(m => m !== uid) || null;
       }
+
+      await setDoc(doc(db, 'users', uid), {
+        sessionId: joinedSessionId,
+        partnerId,
+        joinedAt: Date.now(),
+      }, { merge: true });
 
       set({ sessionId: joinedSessionId, partnerId });
     } catch (e) {
@@ -138,13 +141,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const result = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = result.user;
-      
+
       const userData: UserData = {
         id: firebaseUser.uid,
         email: firebaseUser.email || email,
         nombre: firebaseUser.displayName || email.split('@')[0],
       };
-      
+
+      if (db) {
+        try {
+          await setDoc(doc(db, 'users', firebaseUser.uid), {
+            email: userData.email,
+            nombre: userData.nombre,
+            lastLogin: Date.now(),
+          }, { merge: true });
+        } catch (e) {
+          console.warn('[store] No se pudo actualizar users/{uid} en login:', e);
+        }
+      }
+
       set({ user: userData, firebaseUser: firebaseUser, isAuthenticated: true });
       return true;
     } catch (error: any) {
@@ -159,13 +174,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const result = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = result.user;
-      
+
       const userData: UserData = {
         id: firebaseUser.uid,
         email: firebaseUser.email || email,
         nombre: email.split('@')[0],
       };
-      
+
+      if (db) {
+        try {
+          await setDoc(doc(db, 'users', firebaseUser.uid), {
+            email: userData.email,
+            nombre: userData.nombre,
+            createdAt: Date.now(),
+          }, { merge: true });
+        } catch (e) {
+          console.warn('[store] No se pudo crear users/{uid} (rules bloqueando?):', e);
+        }
+      }
+
       set({ user: userData, firebaseUser: firebaseUser, isAuthenticated: true });
       return true;
     } catch (error: any) {

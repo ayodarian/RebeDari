@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc, getDocs, limit, startAfter } from 'firebase/firestore';
 import { db, uploadFile, deleteFile } from '../../lib/firebase';
+import { useAppStore } from '../../store/index';
 
 const { width } = Dimensions.get('window');
 
@@ -137,46 +138,55 @@ const getMensajeAleatorio = (categoria: string): string => {
 
 export default function FeedScreen() {
   const insets = useSafeAreaInsets();
+  const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+  const PAGE_SIZE = 20;
+
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [uploading, setUploading] = useState(false);
-  
+
   const [modalVisible, setModalVisible] = useState(false);
   const [modalType, setModalType] = useState<ModalType>(null);
-  
+
   const [countdown, setCountdown] = useState('');
   const [capsulaAbierta, setCapsulaAbierta] = useState(false);
-  
+
   const [trips, setTrips] = useState<Trip[]>([]);
   const [newTrip, setNewTrip] = useState({ date: '', place: '', desc: '' });
   const [tripImage, setTripImage] = useState<string | null>(null);
   const [uploadingTrip, setUploadingTrip] = useState(false);
   const [bitacoraTab, setBitacoraTab] = useState<'crear' | 'ver'>('crear');
-  
+
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [editingPhotoId, setEditingPhotoId] = useState<string | null>(null);
   const [editingCaption, setEditingCaption] = useState('');
   const [photoOptionsId, setPhotoOptionsId] = useState<string | null>(null);
   const [actionModalVisible, setActionModalVisible] = useState(false);
-  const [lastVisiblePhotos, setLastVisiblePhotos] = useState<any>(null);
-  const [moreLoadingPhotos, setMoreLoadingPhotos] = useState(false);
-  const [hasMorePhotos, setHasMorePhotos] = useState(true);
-  const PHOTOS_PAGE = 12;
+
+  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
-    if (!db) return;
+    if (!db || !isAuthenticated) return;
 
-    const photosQuery = query(collection(db, 'fotos'), orderBy('created_at', 'desc'), limit(PHOTOS_PAGE));
-    const unsubscribePhotos = onSnapshot(photosQuery, (snapshot) => {
-      const photosData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Photo[];
-      setPhotos(photosData);
-      if (snapshot.docs.length > 0) {
-        setLastVisiblePhotos(snapshot.docs[snapshot.docs.length - 1]);
-        setHasMorePhotos(snapshot.docs.length === PHOTOS_PAGE);
-      } else setHasMorePhotos(false);
-    });
+    const loadFirstPage = async () => {
+      try {
+        const q = query(
+          collection(db, 'fotos'),
+          orderBy('created_at', 'desc'),
+          limit(PAGE_SIZE),
+        );
+        const snap = await getDocs(q);
+        const photosData = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Photo[];
+        setPhotos(photosData);
+        setLastVisible(snap.docs[snap.docs.length - 1] || null);
+        setHasMore(snap.docs.length === PAGE_SIZE);
+      } catch (e) {
+        console.error('[feed] Error cargando fotos', e);
+      }
+    };
+
+    loadFirstPage();
 
     const tripsQuery = db ? query(collection(db, 'bitacora'), orderBy('date', 'desc')) : null;
     const unsubscribeTrips = tripsQuery ? onSnapshot(tripsQuery, (snapshot) => {
@@ -188,27 +198,29 @@ export default function FeedScreen() {
     }) : null;
 
     return () => {
-      unsubscribePhotos();
       unsubscribeTrips?.();
     };
-  }, []);
+  }, [isAuthenticated]);
 
-  const loadMorePhotos = async () => {
-    if (!hasMorePhotos || moreLoadingPhotos || !lastVisiblePhotos || !db) return;
-    setMoreLoadingPhotos(true);
+  const loadMore = async () => {
+    if (!db || !lastVisible || loadingMore || !hasMore) return;
+    setLoadingMore(true);
     try {
-      const moreQuery = query(collection(db, 'fotos'), orderBy('created_at', 'desc'), startAfter(lastVisiblePhotos), limit(PHOTOS_PAGE));
-      const snap = await getDocs(moreQuery);
-      const newPhotos = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Photo[];
-      if (newPhotos.length > 0) {
-        setPhotos(prev => [...prev, ...newPhotos]);
-        setLastVisiblePhotos(snap.docs[snap.docs.length - 1]);
-      }
-      if (newPhotos.length < PHOTOS_PAGE) setHasMorePhotos(false);
+      const q = query(
+        collection(db, 'fotos'),
+        orderBy('created_at', 'desc'),
+        startAfter(lastVisible),
+        limit(PAGE_SIZE),
+      );
+      const snap = await getDocs(q);
+      const newPhotos = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Photo[];
+      setPhotos(prev => [...prev, ...newPhotos]);
+      setLastVisible(snap.docs[snap.docs.length - 1] || null);
+      setHasMore(snap.docs.length === PAGE_SIZE);
     } catch (e) {
-      console.error('Error cargando más fotos', e);
+      console.error('[feed] Error cargando más fotos', e);
     } finally {
-      setMoreLoadingPhotos(false);
+      setLoadingMore(false);
     }
   };
 
@@ -691,9 +703,19 @@ export default function FeedScreen() {
         data={photos}
         renderItem={renderPhoto}
         keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
         contentContainerStyle={styles.feedContent}
         onScrollBeginDrag={() => setPhotoOptionsId(null)}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.4}
+        initialNumToRender={10}
+        windowSize={11}
+        maxToRenderPerBatch={10}
+        ListFooterComponent={loadingMore ? (
+          <View style={styles.footerLoader}>
+            <ActivityIndicator color="#FF6B9D" />
+          </View>
+        ) : null}
       />
       
       <TouchableOpacity style={styles.floatingButton} onPress={openActionModal}>
@@ -854,6 +876,10 @@ buttonRow: {
   },
   feedContent: {
     paddingBottom: 110,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
   photoContainer: {
     marginHorizontal: 12,
