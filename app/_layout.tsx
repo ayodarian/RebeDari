@@ -1,28 +1,66 @@
+import '../lib/crypto-polyfill';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'expo-router';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { useAppStore } from '../store/index';
 import { ToastProvider } from './components/Toast';
+import * as Linking from 'expo-linking';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+  const isLoading = useAppStore((s) => s.isLoading);
+  const checkAuth = useAppStore((s) => s.checkAuth);
 
   useEffect(() => {
-    if (!auth) {
-      // Si auth no está inicializado, no intentamos suscribirnos y permitimos acceso a auth route
-      return;
+    checkAuth();
+  }, []);
+
+  useEffect(() => {
+    if (isLoading) return;
+    
+    const tabRoutes = ['/bingo', '/cartas', '/dedos', '/reels', '/perfil'];
+    if (!isAuthenticated && tabRoutes.includes(pathname)) {
+      router.replace('/(auth)');
     }
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user && pathname !== '/(auth)') {
-        router.replace('/(auth)');
+  }, [isAuthenticated, isLoading, pathname]);
+
+  useEffect(() => {
+    const handleDeepLink = (event: { url: string }) => {
+      const { url } = event;
+      const parsed = Linking.parse(url);
+
+      if (parsed.path === 'invite' && parsed.queryParams?.token) {
+        const token = parsed.queryParams.token as string;
+        if (isAuthenticated) {
+          router.push({
+            pathname: '/(auth)/invite',
+            params: { token },
+          });
+        } else {
+          router.replace({
+            pathname: '/(auth)',
+            params: { inviteToken: token },
+          });
+        }
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink({ url });
       }
     });
-    return () => unsubscribe();
-  }, [pathname]);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isAuthenticated]);
 
   return <>{children}</>;
 }

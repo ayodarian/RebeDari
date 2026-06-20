@@ -2,14 +2,14 @@ import { View, Text, StyleSheet, FlatList, Pressable, ScrollView, Modal, Alert, 
 import { useState, useEffect, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc, getDocs, limit, startAfter } from 'firebase/firestore';
-import { db, uploadFile, deleteFile } from '../../lib/firebase';
+import insforge from '../../lib/insforge';
+import { uploadFile, deleteFile } from '../../lib/storage';
 import { useAppStore } from '../../store/index';
 
 const { width } = Dimensions.get('window');
 
 interface Photo {
-  id: string;
+  id: number;
   url: string;
   path?: string;
   caption: string;
@@ -17,7 +17,7 @@ interface Photo {
 }
 
 interface Trip {
-  id: string;
+  id: number;
   date: string;
   place: string;
   desc: string;
@@ -157,30 +157,32 @@ export default function FeedScreen() {
   const [bitacoraTab, setBitacoraTab] = useState<'crear' | 'ver'>('crear');
 
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
-  const [editingPhotoId, setEditingPhotoId] = useState<string | null>(null);
+  const [editingPhotoId, setEditingPhotoId] = useState<number | null>(null);
   const [editingCaption, setEditingCaption] = useState('');
-  const [photoOptionsId, setPhotoOptionsId] = useState<string | null>(null);
+  const [photoOptionsId, setPhotoOptionsId] = useState<number | null>(null);
   const [actionModalVisible, setActionModalVisible] = useState(false);
 
-  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [lastId, setLastId] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
-    if (!db || !isAuthenticated) return;
+    if (!isAuthenticated) return;
 
     const loadFirstPage = async () => {
       try {
-        const q = query(
-          collection(db, 'fotos'),
-          orderBy('created_at', 'desc'),
-          limit(PAGE_SIZE),
-        );
-        const snap = await getDocs(q);
-        const photosData = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Photo[];
-        setPhotos(photosData);
-        setLastVisible(snap.docs[snap.docs.length - 1] || null);
-        setHasMore(snap.docs.length === PAGE_SIZE);
+        const { data: photosData } = await insforge.database
+          .from('fotos')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(PAGE_SIZE);
+        if (photosData) {
+          setPhotos(photosData as Photo[]);
+          if (photosData.length > 0) {
+            setLastId(photosData[photosData.length - 1].id);
+          }
+          setHasMore(photosData.length === PAGE_SIZE);
+        }
       } catch (e) {
         console.error('[feed] Error cargando fotos', e);
       }
@@ -188,35 +190,42 @@ export default function FeedScreen() {
 
     loadFirstPage();
 
-    const tripsQuery = db ? query(collection(db, 'bitacora'), orderBy('date', 'desc')) : null;
-    const unsubscribeTrips = tripsQuery ? onSnapshot(tripsQuery, (snapshot) => {
-      const tripsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Trip[];
-      setTrips(tripsData);
-    }) : null;
+    const loadTrips = async () => {
+      try {
+        const { data } = await insforge.database
+          .from('bitacora')
+          .select('*')
+          .order('date', { ascending: false });
+        if (data) setTrips(data as Trip[]);
+      } catch (e) {
+        console.error('[feed] Error cargando bitacora', e);
+      }
+    };
+    loadTrips();
+    const tripsInterval = setInterval(loadTrips, 5000);
 
     return () => {
-      unsubscribeTrips?.();
+      clearInterval(tripsInterval);
     };
   }, [isAuthenticated]);
 
   const loadMore = async () => {
-    if (!db || !lastVisible || loadingMore || !hasMore) return;
+    if (!lastId || loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const q = query(
-        collection(db, 'fotos'),
-        orderBy('created_at', 'desc'),
-        startAfter(lastVisible),
-        limit(PAGE_SIZE),
-      );
-      const snap = await getDocs(q);
-      const newPhotos = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Photo[];
-      setPhotos(prev => [...prev, ...newPhotos]);
-      setLastVisible(snap.docs[snap.docs.length - 1] || null);
-      setHasMore(snap.docs.length === PAGE_SIZE);
+      const { data: newPhotos } = await insforge.database
+        .from('fotos')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .gt('id', lastId)
+        .limit(PAGE_SIZE);
+      if (newPhotos) {
+        setPhotos(prev => [...prev, ...newPhotos as Photo[]]);
+        if (newPhotos.length > 0) {
+          setLastId(newPhotos[newPhotos.length - 1].id);
+        }
+        setHasMore(newPhotos.length === PAGE_SIZE);
+      }
     } catch (e) {
       console.error('[feed] Error cargando más fotos', e);
     } finally {
@@ -282,11 +291,13 @@ export default function FeedScreen() {
         const path = `fotos/${timestamp}.jpg`;
         const url = await uploadFile(result.assets[0].uri, path);
         
-        await addDoc(collection(db, 'fotos'), {
+        await insforge.database.from('fotos').insert({
           url,
           path,
           caption: 'Recuerdos',
           created_at: new Date().toISOString(),
+          session_id: useAppStore.getState().sessionId,
+          user_id: useAppStore.getState().user?.id,
         });
         
         Alert.alert('Éxito', 'Foto subida correctamente');
@@ -345,13 +356,15 @@ export default function FeedScreen() {
         imageUrl = await uploadFile(tripImage, imagePath);
       }
       
-      const tripRef = await addDoc(collection(db, 'bitacora'), {
+      await insforge.database.from('bitacora').insert({
         date: newTrip.date,
         place: newTrip.place,
         desc: newTrip.desc,
         imageUrl,
         imagePath,
         created_at: new Date().toISOString(),
+        session_id: useAppStore.getState().sessionId,
+        user_id: useAppStore.getState().user?.id,
       });
       
       setNewTrip({ date: '', place: '', desc: '' });
@@ -379,7 +392,7 @@ export default function FeedScreen() {
               if (trip.imagePath) {
                 await deleteFile(trip.imagePath);
               }
-              await deleteDoc(doc(db, 'bitacora', trip.id));
+              await insforge.database.from('bitacora').delete().eq('id', trip.id);
             } catch (error) {
               console.error('Error deleting trip:', error);
             }
@@ -652,7 +665,7 @@ export default function FeedScreen() {
                         onPress: async () => {
                           try {
                             await deleteFile(item.path || '');
-                            await deleteDoc(doc(db, 'fotos', item.id));
+                            await insforge.database.from('fotos').delete().eq('id', item.id);
                           } catch (error) {
                             console.error('Error deleting photo:', error);
                           }
@@ -702,7 +715,7 @@ export default function FeedScreen() {
       <FlatList
         data={photos}
         renderItem={renderPhoto}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={true}
         contentContainerStyle={styles.feedContent}
         onScrollBeginDrag={() => setPhotoOptionsId(null)}
@@ -787,7 +800,7 @@ export default function FeedScreen() {
                 onPress={async () => {
                   if (editingPhotoId) {
                     try {
-                      await updateDoc(doc(db, 'fotos', editingPhotoId), { caption: editingCaption });
+                      await insforge.database.from('fotos').update({ caption: editingCaption }).eq('id', editingPhotoId);
                       setEditingPhotoId(null);
                     } catch (error) {
                       console.error('Error updating caption:', error);

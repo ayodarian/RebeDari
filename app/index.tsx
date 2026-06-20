@@ -8,10 +8,9 @@ export default function Index() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = checkAuth();
+    checkAuth();
     const timer = setTimeout(() => setReady(true), 500);
     return () => {
-      unsubscribe?.();
       clearTimeout(timer);
     };
   }, []);

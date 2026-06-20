@@ -1,7 +1,6 @@
 import { create } from 'zustand';
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, User } from 'firebase/auth';
-import { auth, db, firebaseReady } from '../lib/firebase';
-import { collection, query, where, orderBy, limit, getDocs, getDoc, doc, setDoc, runTransaction, updateDoc, deleteDoc } from 'firebase/firestore';
+import insforge, { getClient, setAccessToken, restoreSession } from '../lib/insforge';
+import { tokenStorage, StoredUser } from '../lib/token-storage';
 
 interface UserData {
   id: string;
@@ -11,24 +10,29 @@ interface UserData {
 
 interface AppState {
   user: UserData | null;
-  firebaseUser: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   sessionId: string | null;
   partnerId: string | null;
+  inviteToken: string | null;
   setUser: (user: UserData | null) => void;
   joinSession: () => Promise<void>;
   leaveSession: () => Promise<void>;
+  createInvite: () => Promise<string>;
+  acceptInvite: (token: string) => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
-  register: (email: string, password: string) => Promise<boolean>;
+  register: (email: string, password: string, nombre?: string) => Promise<{ requiresVerification: boolean }>;
   logout: () => Promise<void>;
   recoverPassword: (email: string) => Promise<boolean>;
-  checkAuth: () => (() => void) | undefined;
+  exchangeResetPasswordToken: (email: string, code: string) => Promise<any>;
+  resetPassword: (otp: string, newPassword: string) => Promise<any>;
+  verifyEmail: (email: string, otp: string) => Promise<boolean>;
+  signInWithIdToken: (idToken: string) => Promise<boolean>;
+  checkAuth: () => Promise<(() => void) | undefined>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   user: null,
-  firebaseUser: null,
   isAuthenticated: false,
   isLoading: true,
 
@@ -36,99 +40,96 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   sessionId: null,
   partnerId: null,
+  inviteToken: null,
 
   joinSession: async () => {
-    const firebaseUser = get().firebaseUser;
-    if (!firebaseUser) throw new Error('Usuario no autenticado');
-    const uid = firebaseUser.uid;
+    const user = get().user;
+    if (!user) throw new Error('Usuario no autenticado');
+    const uid = user.id;
+    const client = getClient();
 
-    if (!db) throw new Error('Firebase Firestore no inicializado');
-    const sessionsRef = collection(db, 'sessions');
-    // buscar sesión abierta con espacio (isOpen === true)
-    const q = query(sessionsRef, where('isOpen', '==', true), orderBy('created_at'), limit(1));
     try {
-      // intentamos buscar una sesión abierta (membersCount < 2)
-      const docs = await getDocs(q);
-      let joinedSessionId: string | null = null;
+      const { data: userData, error: userError } = await client.database
+        .from('users')
+        .select('session_id, partner_id')
+        .eq('id', uid)
+        .single();
 
-      for (const d of docs.docs) {
-        // intentar unirse usando transacción
-        await runTransaction(db, async (tx) => {
-          const docRef = doc(db, 'sessions', d.id);
-          const snap = await tx.get(docRef);
-          const sdata = snap.data() as any;
-          if (!sdata) return;
-          if (!sdata.members) sdata.members = [];
-          // si ya estoy en la sesión, simplemente retornamos
-          if (sdata.members.includes(uid)) {
-            joinedSessionId = d.id;
-            return;
-          }
-          // si la sesión ya está completa, abortar
-          if (sdata.members.length >= 2) return;
-          const newMembers = [...sdata.members, uid];
-          const isOpen = newMembers.length < 2;
-          tx.update(docRef, { members: newMembers, isOpen });
-          joinedSessionId = d.id;
+      if (!userError && userData?.session_id) {
+        set({
+          sessionId: userData.session_id,
+          partnerId: userData.partner_id || null,
         });
-        if (joinedSessionId) break;
+        return;
       }
 
-      if (!joinedSessionId) {
-        // crear nueva sesión abierta (isOpen true porque tiene 1 miembro)
-        const newDoc = doc(sessionsRef);
-        await setDoc(newDoc, { members: [uid], created_at: new Date().toISOString(), isOpen: true });
-        joinedSessionId = newDoc.id;
+      const { data: pendingInvite, error: inviteError } = await client.database
+        .from('invites')
+        .select('*')
+        .is('used_by', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (pendingInvite && pendingInvite.length > 0 && !inviteError) {
+        const invite = pendingInvite[0];
+        if (invite.created_by !== uid) {
+          await get().acceptInvite(invite.token);
+          return;
+        }
       }
 
-      const sessionRef = doc(db, 'sessions', joinedSessionId);
-      const finalSnap = await getDoc(sessionRef).catch(() => null);
-      let partnerId: string | null = null;
-      if (finalSnap && finalSnap.exists()) {
-        const sdata: any = finalSnap.data();
-        const members: string[] = sdata.members || [];
-        partnerId = members.find(m => m !== uid) || null;
-      }
+      const { data: newSession, error: cError } = await client.database
+        .from('sessions')
+        .insert({ members: [uid], is_open: true })
+        .select()
+        .single();
 
-      await setDoc(doc(db, 'users', uid), {
-        sessionId: joinedSessionId,
-        partnerId,
-        joinedAt: Date.now(),
-      }, { merge: true });
+      if (cError) throw cError;
+      const joinedSessionId = String(newSession.id);
 
-      set({ sessionId: joinedSessionId, partnerId });
+      await client.database
+        .from('users')
+        .update({
+          session_id: joinedSessionId,
+          partner_id: null,
+          joined_at: Date.now(),
+        })
+        .eq('id', uid);
+
+      set({ sessionId: joinedSessionId, partnerId: null });
     } catch (e) {
-      console.error('Error al unir sesión', e);
+      console.error('Error al unir sesion', e);
       throw e;
     }
   },
 
   leaveSession: async () => {
-    const firebaseUser = get().firebaseUser;
+    const user = get().user;
     const sessionId = get().sessionId;
-    if (!firebaseUser || !sessionId) return;
-    const uid = firebaseUser.uid;
-    if (!db) {
-      console.warn('leaveSession: Firestore no inicializado, limpiando estado local');
-      set({ sessionId: null, partnerId: null });
-      return;
-    }
+    if (!user || !sessionId) return;
+    const client = getClient();
+
     try {
-      const sessionRef = doc(db, 'sessions', sessionId);
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(sessionRef);
-        if (!snap.exists()) return;
-        const data: any = snap.data();
-        const members: string[] = data.members || [];
-        const remaining = members.filter(m => m !== uid);
-        if (remaining.length === 0) {
-          tx.delete(sessionRef);
-        } else {
-          // si queda 1 miembro, marcamos la sesión como abierta para que otro usuario pueda unirse
-          const isOpen = remaining.length < 2;
-          tx.update(sessionRef, { members: remaining, isOpen });
-        }
-      });
+      const { data: session } = await client.database
+        .from('sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+
+      if (!session) return;
+
+      const members = (session.members as string[]) || [];
+      const remaining = members.filter((m: string) => m !== user.id);
+
+      if (remaining.length === 0) {
+        await client.database.from('sessions').delete().eq('id', sessionId);
+      } else {
+        const isOpen = remaining.length < 2;
+        await client.database
+          .from('sessions')
+          .update({ members: remaining, is_open: isOpen })
+          .eq('id', sessionId);
+      }
     } catch (e) {
       console.error('Error leaving session', e);
     } finally {
@@ -136,105 +137,359 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  login: async (email, password) => {
-    if (!auth) throw new Error('Firebase Auth no disponible');
+  createInvite: async () => {
+    const user = get().user;
+    if (!user) throw new Error('Usuario no autenticado');
+    const client = getClient();
+
+    const token = Math.random().toString(36).substring(2, 8).toUpperCase();
+
     try {
-      const result = await signInWithEmailAndPassword(auth, email, password);
-      const firebaseUser = result.user;
+      const { data, error } = await client.database
+        .from('invites')
+        .insert({
+          token,
+          created_by: user.id,
+          created_at: Date.now(),
+        })
+        .select()
+        .single();
 
-      const userData: UserData = {
-        id: firebaseUser.uid,
-        email: firebaseUser.email || email,
-        nombre: firebaseUser.displayName || email.split('@')[0],
-      };
-
-      if (db) {
-        try {
-          await setDoc(doc(db, 'users', firebaseUser.uid), {
-            email: userData.email,
-            nombre: userData.nombre,
-            lastLogin: Date.now(),
-          }, { merge: true });
-        } catch (e) {
-          console.warn('[store] No se pudo actualizar users/{uid} en login:', e);
-        }
-      }
-
-      set({ user: userData, firebaseUser: firebaseUser, isAuthenticated: true });
-      return true;
-    } catch (error: any) {
-      console.error('Login error:', error);
-      const errorMessage = error.message || 'Error al iniciar sesión';
-      throw new Error(errorMessage);
+      if (error) throw error;
+      return token;
+    } catch (e) {
+      console.error('Error creating invite', e);
+      throw e;
     }
   },
 
-  register: async (email, password) => {
-    if (!auth) throw new Error('Firebase Auth no disponible');
+  acceptInvite: async (token: string) => {
+    const user = get().user;
+    if (!user) throw new Error('Usuario no autenticado');
+    const client = getClient();
+
     try {
-      const result = await createUserWithEmailAndPassword(auth, email, password);
-      const firebaseUser = result.user;
+      const { data: invite, error: inviteError } = await client.database
+        .from('invites')
+        .select('*')
+        .eq('token', token)
+        .is('used_by', null)
+        .single();
 
-      const userData: UserData = {
-        id: firebaseUser.uid,
-        email: firebaseUser.email || email,
-        nombre: email.split('@')[0],
-      };
-
-      if (db) {
-        try {
-          await setDoc(doc(db, 'users', firebaseUser.uid), {
-            email: userData.email,
-            nombre: userData.nombre,
-            createdAt: Date.now(),
-          }, { merge: true });
-        } catch (e) {
-          console.warn('[store] No se pudo crear users/{uid} (rules bloqueando?):', e);
-        }
+      if (inviteError || !invite) {
+        throw new Error('Invitación no válida o ya utilizada');
       }
 
-      set({ user: userData, firebaseUser: firebaseUser, isAuthenticated: true });
+      if (invite.created_by === user.id) {
+        throw new Error('No puedes aceptar tu propia invitación');
+      }
+
+      const creatorId = invite.created_by;
+      const partnerId = creatorId;
+
+      const { data: existingSession, error: sessionError } = await client.database
+        .from('sessions')
+        .select('*')
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      let sessionId: string;
+
+      if (existingSession && existingSession.length > 0) {
+        const session = existingSession[0];
+        const members = (session.members as string[]) || [];
+        if (members.includes(creatorId)) {
+          sessionId = String(session.id);
+          const newMembers = [...members, user.id];
+          await client.database
+            .from('sessions')
+            .update({ members: newMembers, is_open: false })
+            .eq('id', sessionId);
+        } else {
+          throw new Error('La sesión del creador no existe');
+        }
+      } else {
+        const { data: newSession, error: createError } = await client.database
+          .from('sessions')
+          .insert({ members: [creatorId, user.id], is_open: false })
+          .select()
+          .single();
+
+        if (createError) throw createError;
+        sessionId = String(newSession.id);
+      }
+
+      await client.database
+        .from('users')
+        .update({
+          session_id: sessionId,
+          partner_id: partnerId,
+          joined_at: Date.now(),
+        })
+        .eq('id', user.id);
+
+      await client.database
+        .from('users')
+        .update({
+          partner_id: user.id,
+        })
+        .eq('id', creatorId);
+
+      await client.database
+        .from('invites')
+        .update({
+          used_by: user.id,
+          used_at: Date.now(),
+        })
+        .eq('token', token);
+
+      set({ sessionId, partnerId, inviteToken: null });
+    } catch (e) {
+      console.error('Error accepting invite', e);
+      throw e;
+    }
+  },
+
+  login: async (email, password) => {
+    const client = getClient();
+    try {
+      const { data, error } = await client.auth.signInWithPassword({ email, password });
+      if (error) {
+        const err = error as any;
+        console.error('[Login] Error:', err.message, 'code:', err.error, 'status:', err.statusCode);
+        throw error;
+      }
+      if (!data) throw new Error('No se pudo iniciar sesion');
+
+      if (data.accessToken) {
+        await tokenStorage.setTokens(data.accessToken, data.refreshToken || '');
+        setAccessToken(data.accessToken);
+      }
+
+      const userData: UserData = {
+        id: data.user.id,
+        email: data.user.email || email,
+        nombre: data.user.profile?.name || email.split('@')[0],
+      };
+
+      await tokenStorage.setUserData(userData);
+
+      await client.database
+        .from('users')
+        .upsert({
+          id: userData.id,
+          email: userData.email,
+          nombre: userData.nombre,
+          last_login: Date.now(),
+        }, { onConflict: 'id' });
+
+      set({ user: userData, isAuthenticated: true });
+      await get().joinSession();
       return true;
     } catch (error: any) {
-      console.error('Register error:', error);
-      const errorMessage = error.message || 'Error al registrar';
-      throw new Error(errorMessage);
+      const err = error as any;
+      const statusCode = err?.statusCode || err?.status;
+      const errCode = err?.error || err?.code || '';
+      const msg = err?.message || '';
+
+      console.error('[Login] Full error:', { statusCode, errCode, msg });
+
+      if (statusCode === 401 || errCode.includes('INVALID') || msg.includes('invalid') || msg.includes('Invalid')) {
+        throw new Error('Credenciales inválidas');
+      }
+      if (statusCode === 404 || errCode.includes('NOT_FOUND') || msg.includes('not found')) {
+        throw new Error('Usuario no encontrado');
+      }
+      throw new Error(msg || 'Error al iniciar sesión');
+    }
+  },
+
+  register: async (email, password, nombre) => {
+    const client = getClient();
+    try {
+      const { data, error } = await client.auth.signUp({
+        email,
+        password,
+        name: nombre || email.split('@')[0],
+      });
+      if (error) {
+        const err = error as any;
+        console.error('[Register] Error:', err.message, 'code:', err.error, 'status:', err.statusCode);
+        throw error;
+      }
+      if (!data) throw new Error('No se pudo registrar');
+
+      console.log('[Register] Response data:', JSON.stringify(data, null, 2));
+      console.log('[Register] requireEmailVerification:', data.requireEmailVerification);
+
+      if (data.requireEmailVerification) {
+        console.log('[Register] Requires verification, returning true');
+        return { requiresVerification: true };
+      }
+
+      if (data.accessToken) {
+        await tokenStorage.setTokens(data.accessToken, data.refreshToken || '');
+        setAccessToken(data.accessToken);
+      }
+
+      const userData: UserData = {
+        id: data.user?.id || '',
+        email: data.user?.email || email,
+        nombre: nombre || email.split('@')[0],
+      };
+
+      await tokenStorage.setUserData(userData);
+
+      if (userData.id) {
+        await client.database
+          .from('users')
+          .upsert({
+            id: userData.id,
+            email: userData.email,
+            nombre: userData.nombre,
+            created_at: Date.now(),
+          }, { onConflict: 'id' });
+      }
+
+      set({ user: userData, isAuthenticated: true });
+      await get().joinSession();
+      console.log('[Register] No verification required, returning false');
+      return { requiresVerification: false };
+    } catch (error: any) {
+      const err = error as any;
+      const statusCode = err?.statusCode || err?.status;
+      const errCode = err?.error || err?.code || '';
+      const msg = err?.message || '';
+
+      console.error('[Register] Full error:', { statusCode, errCode, msg });
+
+      if (statusCode === 409 || errCode.includes('ALREADY') || msg.includes('already') || msg.includes('Already')) {
+        throw new Error('YaExiste');
+      }
+      throw new Error(msg || 'Error al registrar');
     }
   },
 
   logout: async () => {
-    if (!auth) return;
     try {
-      await signOut(auth);
-      set({ user: null, firebaseUser: null, isAuthenticated: false });
-    } catch (error) {
-      console.error('Logout error:', error);
+      await getClient().auth.signOut();
+    } catch (e) {
+      console.warn('Logout error (ignoring):', e);
     }
+    await tokenStorage.clearAll();
+    setAccessToken(null);
+    set({ user: null, isAuthenticated: false });
   },
 
   recoverPassword: async (email: string) => {
-    if (!auth) throw new Error('Firebase Auth no disponible');
-    await sendPasswordResetEmail(auth, email);
+    const { error } = await getClient().auth.sendResetPasswordEmail({ email });
+    if (error) throw new Error(error.message || 'Error al enviar email de recuperacion');
     return true;
   },
 
-  checkAuth: () => {
-    if (!auth) {
-      set({ isLoading: false });
-      return;
+  exchangeResetPasswordToken: async (email: string, code: string) => {
+    const { data, error } = await getClient().auth.exchangeResetPasswordToken({ email, code });
+    if (error) throw new Error(error.message || 'Código inválido o expirado');
+    return data;
+  },
+
+  resetPassword: async (otp: string, newPassword: string) => {
+    const { data, error } = await getClient().auth.resetPassword({ otp, newPassword });
+    if (error) throw new Error(error.message || 'Error al restablecer contraseña');
+    return data;
+  },
+
+  verifyEmail: async (email: string, otp: string) => {
+    const { data, error } = await getClient().auth.verifyEmail({ email, otp });
+    if (error) throw new Error(error.message || 'Código inválido o expirado');
+    if (!data) throw new Error('No se pudo verificar el email');
+
+    if (data.accessToken) {
+      await tokenStorage.setTokens(data.accessToken, data.refreshToken || '');
+      setAccessToken(data.accessToken);
     }
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        const userData: UserData = {
-          id: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          nombre: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuario',
-        };
-        set({ user: userData, firebaseUser, isAuthenticated: true, isLoading: false });
-      } else {
-        set({ user: null, firebaseUser: null, isAuthenticated: false, isLoading: false });
+
+    const userData: UserData = {
+      id: data.user.id,
+      email: data.user.email || email,
+      nombre: data.user.profile?.name || email.split('@')[0],
+    };
+
+    await tokenStorage.setUserData(userData);
+
+    await getClient().database
+      .from('users')
+      .upsert({
+        id: userData.id,
+        email: userData.email,
+        nombre: userData.nombre,
+        created_at: Date.now(),
+      }, { onConflict: 'id' });
+
+    set({ user: userData, isAuthenticated: true });
+    await get().joinSession();
+    return true;
+  },
+
+  signInWithIdToken: async (idToken: string) => {
+    const client = getClient();
+    try {
+      console.log('[Auth] Intentando login con ID token de Google...');
+      const { data, error } = await client.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      });
+
+      if (error) {
+        console.error('[Auth] Error con ID token:', error.message);
+        throw error;
       }
-    });
-    return unsubscribe;
+      if (!data) throw new Error('No se pudo autenticar');
+
+      if (data.accessToken) {
+        await tokenStorage.setTokens(data.accessToken, data.refreshToken || '');
+        setAccessToken(data.accessToken);
+      }
+
+      const userData: UserData = {
+        id: data.user?.id || '',
+        email: data.user?.email || '',
+        nombre: data.user?.profile?.name || data.user?.email?.split('@')[0] || 'Usuario',
+      };
+      await tokenStorage.setUserData(userData);
+
+      await client.database
+        .from('users')
+        .upsert({
+          id: userData.id,
+          email: userData.email,
+          nombre: userData.nombre,
+          last_login: Date.now(),
+        }, { onConflict: 'id' });
+
+      set({ user: userData, isAuthenticated: true });
+      await get().joinSession();
+      console.log('[Auth] Login con Google exitoso:', userData.email);
+      return true;
+    } catch (error: any) {
+      console.error('[Auth] Error:', error.message);
+      throw new Error(error.message || 'Error al autenticar con Google');
+    }
+  },
+
+  checkAuth: async () => {
+    try {
+      const userData = await restoreSession();
+      if (userData) {
+        set({ user: userData, isAuthenticated: true, isLoading: false });
+        await get().joinSession();
+      } else {
+        set({ isLoading: false });
+      }
+    } catch (e) {
+      console.warn('[store] checkAuth error:', e);
+      set({ isLoading: false });
+    }
+    return undefined;
   },
 }));

@@ -104,6 +104,7 @@ const tabs = [
   { name: 'cartas', label: 'Cartas', icon: require('../../assets/icon-cartas.png') },
   { name: 'bingo', label: 'Bingo', icon: require('../../assets/icon-bingo.png') },
   { name: 'dedos', label: 'Dedos', icon: require('../../assets/icon-dedos.png') },
+  { name: 'perfil', label: 'Perfil', icon: require('../../assets/icon-feed.png') },
 ];
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
@@ -163,6 +164,7 @@ export default function TabLayout() {
     if (pathname.includes('/cartas')) return 2;
     if (pathname.includes('/bingo')) return 3;
     if (pathname.includes('/dedos')) return 4;
+    if (pathname.includes('/perfil')) return 5;
     return 0;
   };
 
@@ -206,6 +208,12 @@ export default function TabLayout() {
             href: '/(tabs)/dedos',
           }}
         />
+        <Tabs.Screen
+          name="perfil"
+          options={{
+            href: '/(tabs)/perfil',
+          }}
+        />
       </Tabs>
       <CustomTabBarWrapper />
     </GestureHandlerRootView>
@@ -221,6 +229,7 @@ function CustomTabBarWrapper() {
     if (pathname.includes('/cartas')) return 2;
     if (pathname.includes('/bingo')) return 3;
     if (pathname.includes('/dedos')) return 4;
+    if (pathname.includes('/perfil')) return 5;
     return 0;
   };
 

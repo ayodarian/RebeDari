@@ -2,18 +2,18 @@ import { View, Text, StyleSheet, Pressable, Modal, TextInput, Alert, ScrollView,
 import { useState, useEffect, useRef } from 'react';
 import { Dimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { db, auth } from '../../lib/firebase';
+import insforge from '../../lib/insforge';
 import { COLORS } from '../../src/styles/brand';
-import { collection, doc, onSnapshot, setDoc, updateDoc, query, getDocs, runTransaction, writeBatch, deleteDoc } from 'firebase/firestore';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { useToast } from '../components/Toast';
+import { useAppStore } from '../../store/index';
 
 const { width } = Dimensions.get('window');
 const TAMANO_CASILLA = (width - 80) / 5;
 const HIGHLIGHT_DURATION_MS = 2000;
 
 interface Casilla {
-  id: string;
+  id: number;
   titulo: string;
   descripcion: string;
   realizada: boolean;
@@ -25,18 +25,6 @@ interface Casilla {
   updatedBy?: string;
   updatedByName?: string;
 }
-
-const getBingoCollection = () => {
-  if (!db) throw new Error('Firestore no inicializado');
-  return collection(db, 'bingo_cells');
-};
-
-const getCurrentUser = () => {
-  const u = auth?.currentUser;
-  if (!u) return { uid: 'anonymous', name: 'Anónimo' };
-  const name = u.displayName || (u.email ? u.email.split('@')[0] : null) || 'Alguien';
-  return { uid: u.uid, name };
-};
 
 const getColorForUid = (uid: string): string => {
   if (!uid || uid === 'anonymous') return '#B0B0B5';
@@ -54,6 +42,10 @@ const formatDate = (ts: number): string => {
 };
 
 export default function BingoScreen() {
+  const [currentUser, setCurrentUser] = useState<{ uid: string; name: string }>({ uid: 'anonymous', name: 'Anónimo' });
+  const currentUid = currentUser.uid;
+  const currentName = currentUser.name;
+
   const [casillas, setCasillas] = useState<Casilla[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedCasilla, setSelectedCasilla] = useState<Casilla | null>(null);
@@ -70,59 +62,69 @@ export default function BingoScreen() {
   const toast = useToast();
   const [showConfetti, setShowConfetti] = useState(false);
 
-  const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
-  const prevIdsRef = useRef<Set<string>>(new Set());
+  const [highlightedIds, setHighlightedIds] = useState<Set<number>>(new Set());
+  const prevIdsRef = useRef<Set<number>>(new Set());
   const isFirstSnapshotRef = useRef(true);
 
-  const currentUser = getCurrentUser();
-  const currentUid = currentUser.uid;
-  const currentName = currentUser.name;
-
-  const total = casillas.length;
-  const completadas = casillas.filter(c => c.realizada).length;
-  const porcentaje = total === 0 ? 0 : Math.round((completadas / total) * 100);
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const { data } = await insforge.auth.getCurrentUser();
+        if (data?.user) {
+          const name = data.user.profile?.name || (data.user.email ? data.user.email.split('@')[0] : null) || 'Alguien';
+          setCurrentUser({ uid: data.user.id, name });
+        }
+      } catch (e) {
+        console.warn('Bingo: error obteniendo usuario', e);
+      }
+    };
+    fetchUser();
+  }, []);
 
   useEffect(() => {
-    if (!db) {
-      setCargando(false);
-      return;
-    }
-
-    const flagRef = doc(db, 'bingo_meta', 'wiped');
-
     const performWipeIfNeeded = async () => {
+      const sessionId = useAppStore.getState().sessionId;
+      if (!sessionId) return;
       try {
-        await runTransaction(db!, async (txn) => {
-          const flagDoc = await txn.get(flagRef);
-          if (flagDoc.exists()) return;
-          txn.set(flagRef, { wiped: true, at: Date.now() });
-        });
+        const { data: flag } = await insforge.database
+          .from('bingo_meta')
+          .select('*')
+          .eq('id', 'wiped')
+          .eq('session_id', sessionId)
+          .single();
 
-        const cellsSnap = await getDocs(getBingoCollection());
-        if (!cellsSnap.empty) {
-          const batch = writeBatch(db!);
-          cellsSnap.docs.forEach(d => batch.delete(d.ref));
-          await batch.commit();
+        if (!flag) {
+          await insforge.database.from('bingo_meta').insert({ id: 'wiped', wiped: true, at: Date.now(), session_id: sessionId });
+          await insforge.database.from('bingo_cells').delete().neq('id', 0);
         }
       } catch (e) {
         console.warn('Bingo: error en wipe inicial', e);
       }
     };
 
-    performWipeIfNeeded();
+    const loadCells = async () => {
+      try {
+        const { data } = await insforge.database
+          .from('bingo_cells')
+          .select('*')
+          .order('created_at', { ascending: true });
+        if (data) {
+          setCasillas(data as Casilla[]);
+        }
+        setCargando(false);
+      } catch (e) {
+        console.error('Error loading bingo cells', e);
+        setCargando(false);
+      }
+    };
 
-    const q = query(getBingoCollection());
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const cells = snapshot.docs.map(d => ({
-        id: d.id,
-        ...(d.data() as Omit<Casilla, 'id'>),
-      }));
-      const sorted = cells.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-      setCasillas(sorted);
-      setCargando(false);
-    });
-
-    return () => unsubscribe();
+    const init = async () => {
+      await performWipeIfNeeded();
+      await loadCells();
+    };
+    init();
+    const interval = setInterval(loadCells, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -132,7 +134,7 @@ export default function BingoScreen() {
       return;
     }
 
-    const newIds: string[] = [];
+    const newIds: number[] = [];
     casillas.forEach(c => {
       if (!prevIdsRef.current.has(c.id) && c.createdBy && c.createdBy !== currentUid) {
         newIds.push(c.id);
@@ -189,18 +191,18 @@ export default function BingoScreen() {
       Alert.alert('Falta el título', 'Escribí un título para el plan.');
       return;
     }
-    const newDocRef = doc(getBingoCollection());
     const nuevaCasilla = {
-      id: newDocRef.id,
       titulo: tituloInput.trim(),
       descripcion: descripcionInput.trim(),
       realizada: false,
       createdBy: currentUid,
       createdByName: currentName,
       createdAt: Date.now(),
+      session_id: useAppStore.getState().sessionId,
     };
     try {
-      await setDoc(newDocRef, nuevaCasilla);
+      const { error } = await insforge.database.from('bingo_cells').insert(nuevaCasilla);
+      if (error) throw error;
       cerrarModal();
     } catch (e) {
       console.error('Error creando casilla', e);
@@ -208,7 +210,7 @@ export default function BingoScreen() {
     }
   };
 
-  const eliminarCasilla = (id: string) => {
+  const eliminarCasilla = (id: number) => {
     Alert.alert(
       'Confirmar eliminación',
       '¿Estás segura de que quieres eliminar esta casilla?',
@@ -217,11 +219,11 @@ export default function BingoScreen() {
         {
           text: 'Eliminar',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             try {
-              deleteDoc(doc(getBingoCollection(), id)).catch(err => console.error('Error eliminando casilla', err));
+              await insforge.database.from('bingo_cells').delete().eq('id', id);
             } catch (e) {
-              console.warn('No se pudo eliminar casilla: Firestore no inicializado', e);
+              console.error('Error eliminando casilla', e);
             }
             setModoEliminar(false);
           },
@@ -249,7 +251,7 @@ export default function BingoScreen() {
     setModoNuevo(false);
   };
 
-  const guardarCambios = () => {
+  const guardarCambios = async () => {
     if (!selectedCasilla) return;
     const updates = {
       titulo: tituloInput,
@@ -259,14 +261,14 @@ export default function BingoScreen() {
       updatedByName: currentName,
     };
     try {
-      updateDoc(doc(getBingoCollection(), selectedCasilla.id), updates).catch(err => console.error('Error guardando casilla', err));
+      await insforge.database.from('bingo_cells').update(updates).eq('id', selectedCasilla.id);
     } catch (e) {
-      console.warn('No se pudo guardar casilla: Firestore no inicializado', e);
+      console.error('Error guardando casilla', e);
     }
     cerrarModal();
   };
 
-  const confirmarRealizado = () => {
+  const confirmarRealizado = async () => {
     if (!selectedCasilla) return;
     const updates = {
       realizada: true,
@@ -276,9 +278,9 @@ export default function BingoScreen() {
       updatedByName: currentName,
     };
     try {
-      updateDoc(doc(getBingoCollection(), selectedCasilla.id), updates).catch(err => console.error('Error marcando realizado', err));
+      await insforge.database.from('bingo_cells').update(updates).eq('id', selectedCasilla.id);
     } catch (e) {
-      console.warn('No se pudo actualizar realización: Firestore no inicializado', e);
+      console.error('Error marcando realizado', e);
     }
     const nuevasCompletadas = completadas + 1;
     if (nuevasCompletadas >= total && total > 0) {
@@ -289,8 +291,9 @@ export default function BingoScreen() {
   };
 
   const renderCasilla = (casilla: Casilla, index: number) => {
-    if (!animValues[casilla.id]) animValues[casilla.id] = new Animated.Value(1);
-    const scale = animValues[casilla.id];
+    const key = String(casilla.id);
+    if (!animValues[key]) animValues[key] = new Animated.Value(1);
+    const scale = animValues[key];
     const isHighlighted = highlightedIds.has(casilla.id);
     const initial = (casilla.createdByName?.[0] ?? '?').toUpperCase();
     const badgeColor = getColorForUid(casilla.createdBy);
@@ -336,6 +339,10 @@ export default function BingoScreen() {
     }
     return resultado;
   };
+
+  const total = casillas.length;
+  const completadas = casillas.filter(c => c.realizada).length;
+  const porcentaje = total === 0 ? 0 : Math.round((completadas / total) * 100);
 
   const filas = chunkArray(casillasFiltradas, 5);
 

@@ -6,19 +6,20 @@ import { useState, useEffect } from 'react';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
-import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, where, updateDoc, getDocs, limit, startAfter } from 'firebase/firestore';
-import { db, uploadFile, deleteFile } from '../../lib/firebase';
+import insforge from '../../lib/insforge';
+import { uploadFile, deleteFile } from '../../lib/storage';
+import { useAppStore } from '../../store/index';
 
 
 
 interface Carta {
-  id: string;
+  id: number;
   titulo: string;
   url: string;
   path: string;
   remitente: string;
   fecha: string;
-  fechaEscritura?: string;
+  fecha_escritura?: string;
   description: string;
   favorita?: boolean;
   tipo?: 'pdf' | 'imagen';
@@ -34,80 +35,52 @@ export default function CartasScreen() {
   const [fechaModalOpen, setFechaModalOpen] = useState(false);
   const [fechaEscrituraTemp, setFechaEscrituraTemp] = useState('');
   const [pendingUpload, setPendingUpload] = useState<{uri: string; name: string} | null>(null);
-  const [cartaOptionsId, setCartaOptionsId] = useState<string | null>(null);
-  const [editingCartaId, setEditingCartaId] = useState<string | null>(null);
+  const [cartaOptionsId, setCartaOptionsId] = useState<number | null>(null);
+  const [editingCartaId, setEditingCartaId] = useState<number | null>(null);
   const [editingTitulo, setEditingTitulo] = useState('');
   const [descripcionTemp, setDescripcionTemp] = useState('');
   const [tituloCartaTemp, setTituloCartaTemp] = useState('');
   const [previewCarta, setPreviewCarta] = useState<Carta | null>(null);
-  const [lastVisibleCartas, setLastVisibleCartas] = useState<any>(null);
-  const [moreLoadingCartas, setMoreLoadingCartas] = useState(false);
-  const [hasMoreCartas, setHasMoreCartas] = useState(true);
-  const CARTAS_PAGE = 12;
 
   useEffect(() => {
-    if (!db) return;
+    const loadCartas = async () => {
+      try {
+        const { data } = await insforge.database
+          .from('cartas')
+          .select('*')
+          .eq('remitente', pestanaActiva)
+          .order('created_at', { ascending: false });
 
-    const cartasQuery = query(
-      collection(db, 'cartas'),
-      where('remitente', '==', pestanaActiva),
-      orderBy('created_at', 'desc'),
-      limit(CARTAS_PAGE)
-    );
-    
-    const unsubscribe = onSnapshot(cartasQuery, (snapshot) => {
-      let cartasData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Carta[];
-
-      switch (filterMode) {
-        case 'recientes':
-          // ya vienen ordenadas por created_at desc
-          break;
-        case 'fecha':
-          cartasData.sort((a, b) => {
-            const fechaA = a.fechaEscritura ? new Date(a.fechaEscritura).getTime() : 0;
-            const fechaB = b.fechaEscritura ? new Date(b.fechaEscritura).getTime() : 0;
-            return fechaB - fechaA;
-          });
-          break;
-        case 'favoritas':
-          cartasData = cartasData.filter(c => c.favorita);
-          break;
-        case 'aleatorias':
-          cartasData.sort(() => Math.random() - 0.5);
-          break;
+        if (data) {
+          let cartasData = data as Carta[];
+          // Apply client-side filters
+          switch (filterMode) {
+            case 'recientes':
+              break;
+            case 'fecha':
+              cartasData.sort((a, b) => {
+                const fechaA = a.fecha_escritura ? new Date(a.fecha_escritura).getTime() : 0;
+                const fechaB = b.fecha_escritura ? new Date(b.fecha_escritura).getTime() : 0;
+                return fechaB - fechaA;
+              });
+              break;
+            case 'favoritas':
+              cartasData = cartasData.filter(c => c.favorita);
+              break;
+            case 'aleatorias':
+              cartasData.sort(() => Math.random() - 0.5);
+              break;
+          }
+          setCartas(cartasData);
+        }
+      } catch (e) {
+        console.error('Error cargando cartas', e);
       }
-
-      setCartas(cartasData);
-      if (snapshot.docs.length > 0) {
-        setLastVisibleCartas(snapshot.docs[snapshot.docs.length - 1]);
-        setHasMoreCartas(snapshot.docs.length === CARTAS_PAGE);
-      } else setHasMoreCartas(false);
-    });
-
-    return () => unsubscribe();
+    };
+    loadCartas();
+    const interval = setInterval(loadCartas, 5000);
+    return () => clearInterval(interval);
   }, [pestanaActiva, filterMode]);
-
-  const loadMoreCartas = async () => {
-    if (!hasMoreCartas || moreLoadingCartas || !lastVisibleCartas || !db) return;
-    setMoreLoadingCartas(true);
-    try {
-      const moreQuery = query(collection(db, 'cartas'), where('remitente', '==', pestanaActiva), orderBy('created_at', 'desc'), startAfter(lastVisibleCartas), limit(CARTAS_PAGE));
-      const snap = await getDocs(moreQuery);
-      const newCartas = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Carta[];
-      if (newCartas.length > 0) {
-        setCartas(prev => [...prev, ...newCartas]);
-        setLastVisibleCartas(snap.docs[snap.docs.length - 1]);
-      }
-      if (newCartas.length < CARTAS_PAGE) setHasMoreCartas(false);
-    } catch (e) {
-      console.error('Error cargando más cartas', e);
-    } finally {
-      setMoreLoadingCartas(false);
-    }
-  };
 
   const uploadCarta = async () => {
     try {
@@ -131,7 +104,7 @@ export default function CartasScreen() {
 
   const confirmarUpload = async () => {
     if (!pendingUpload) return;
-    
+
     if (!tituloCartaTemp.trim()) {
       Alert.alert('Error', 'Por favor ingresa un título para la carta');
       return;
@@ -156,16 +129,18 @@ export default function CartasScreen() {
       const url = await uploadFile(pendingUpload.uri, path);
       const titulo = tituloCartaTemp.trim();
 
-      await addDoc(collection(db, 'cartas'), {
+      await insforge.database.from('cartas').insert({
         titulo,
         url,
         path,
         remitente: pestanaActiva,
         fecha: new Date().toLocaleDateString('es-MX'),
-        fechaEscritura: fechaEscrituraTemp,
+        fecha_escritura: fechaEscrituraTemp,
         description: descripcionTemp.trim(),
         favorita: false,
         created_at: new Date().toISOString(),
+        session_id: useAppStore.getState().sessionId,
+        user_id: useAppStore.getState().user?.id,
       });
 
       Alert.alert('Éxito', 'Carta subida correctamente');
@@ -184,9 +159,7 @@ export default function CartasScreen() {
 
   const toggleFavorita = async (carta: Carta) => {
     try {
-      await updateDoc(doc(db, 'cartas', carta.id), {
-        favorita: !carta.favorita
-      });
+      await insforge.database.from('cartas').update({ favorita: !carta.favorita }).eq('id', carta.id);
     } catch (error) {
       console.error('Error toggling favorite:', error);
     }
@@ -202,13 +175,13 @@ export default function CartasScreen() {
       '¿Estás seguro que deseas eliminar esta carta?',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Eliminar', 
+        {
+          text: 'Eliminar',
           style: 'destructive',
           onPress: async () => {
             try {
               await deleteFile(carta.path);
-              await deleteDoc(doc(db, 'cartas', carta.id));
+              await insforge.database.from('cartas').delete().eq('id', carta.id);
             } catch (error) {
               Alert.alert('Error', 'No se pudo eliminar la carta');
               console.error('Error deleting carta:', error);
@@ -220,8 +193,8 @@ export default function CartasScreen() {
   };
 
   const renderRightActions = (carta: Carta) => (
-    <TouchableOpacity 
-      style={styles.deleteButton} 
+    <TouchableOpacity
+      style={styles.deleteButton}
       onPress={() => eliminarCarta(carta)}
     >
       <Text style={styles.deleteButtonText}>🗑️</Text>
@@ -245,7 +218,7 @@ export default function CartasScreen() {
         <View style={styles.tarjetaContent}>
           <Text style={styles.tarjetaTitulo}>{carta.titulo}</Text>
           <Text style={styles.tarjetaSubtitulo}>
-            De {carta.remitente} • {carta.fechaEscritura || carta.fecha}
+            De {carta.remitente} • {carta.fecha_escritura || carta.fecha}
           </Text>
         </View>
         <View style={styles.tarjetaRight}>
@@ -259,8 +232,8 @@ export default function CartasScreen() {
           </TouchableOpacity>
           {cartaOptionsId === carta.id && (
             <Pressable style={styles.optionsMenuContainer} onPress={(e) => e.stopPropagation()}>
-              <Pressable 
-                style={styles.optionButton} 
+              <Pressable
+                style={styles.optionButton}
                 onPress={() => {
                   setCartaOptionsId(null);
                   setEditingCartaId(carta.id);
@@ -269,8 +242,8 @@ export default function CartasScreen() {
               >
                 <Text style={styles.optionText}>Editar título</Text>
               </Pressable>
-              <Pressable 
-                style={styles.optionButton} 
+              <Pressable
+                style={styles.optionButton}
                 onPress={() => {
                   setCartaOptionsId(null);
                   eliminarCarta(carta);
@@ -295,7 +268,7 @@ export default function CartasScreen() {
           <Text style={styles.loadingText}>Subiendo carta...</Text>
         </View>
       )}
-      
+
       <View style={[styles.header, { paddingTop: 5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
         <Text style={styles.title}>Cartas</Text>
         <View style={styles.filterContainer}>
@@ -320,7 +293,7 @@ export default function CartasScreen() {
           )}
         </View>
       </View>
-      
+
       <View style={styles.pestanasContainer}>
         <Pressable
           style={[styles.pestana, pestanaActiva === 'Lebebe' && styles.pestanaActivaLebebe]}
@@ -345,14 +318,6 @@ export default function CartasScreen() {
         contentContainerStyle={styles.listaContent}
         showsVerticalScrollIndicator={false}
         onScrollBeginDrag={() => setCartaOptionsId(null)}
-        onScroll={({ nativeEvent }) => {
-          const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
-          // cuando estemos a menos de 200px del final, cargamos más
-          if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 200) {
-            loadMoreCartas();
-          }
-        }}
-        scrollEventThrottle={250}
       >
         {cartas.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -362,10 +327,8 @@ export default function CartasScreen() {
         ) : (
           cartas.map((carta, index) => renderTarjeta(carta, index))
         )}
-
-        {/* carga automática al llegar al final (si hay más) */}
       </ScrollView>
-      
+
       <TouchableOpacity style={styles.floatingButton} onPress={uploadCarta}>
         <Text style={styles.floatingButtonText}>+</Text>
       </TouchableOpacity>
@@ -437,12 +400,12 @@ export default function CartasScreen() {
               <Pressable style={styles.cancelButton} onPress={() => setEditingCartaId(null)}>
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
               </Pressable>
-              <Pressable 
-                style={styles.saveButton} 
+              <Pressable
+                style={styles.saveButton}
                 onPress={async () => {
                   if (editingCartaId) {
                     try {
-                      await updateDoc(doc(db, 'cartas', editingCartaId), { titulo: editingTitulo });
+                      await insforge.database.from('cartas').update({ titulo: editingTitulo }).eq('id', editingCartaId);
                       setEditingCartaId(null);
                     } catch (error) {
                       console.error('Error updating titulo:', error);
@@ -465,25 +428,25 @@ export default function CartasScreen() {
       >
         <View style={styles.romanticoOverlay}>
           <View style={styles.romanticoTarjeta}>
-            <TouchableOpacity 
-              style={styles.romanticoCerrar} 
+            <TouchableOpacity
+              style={styles.romanticoCerrar}
               onPress={() => setPreviewCarta(null)}
             >
               <Text style={styles.romanticoCerrarTexto}>✕</Text>
             </TouchableOpacity>
-            
+
             <View style={styles.romanticoHeader}>
               <Text style={styles.romanticoIcono}>📄</Text>
               <Text style={styles.romanticoTitulo} numberOfLines={2}>
                 {previewCarta?.titulo}
               </Text>
               <Text style={styles.romanticoFecha}>
-                De {previewCarta?.remitente} • {previewCarta?.fechaEscritura || previewCarta?.fecha}
+                De {previewCarta?.remitente} • {previewCarta?.fecha_escritura || previewCarta?.fecha}
               </Text>
             </View>
-            
+
             <View style={styles.romanticoDivider} />
-            
+
             <View style={styles.romanticoVisorContainer}>
               <Text style={styles.romanticoEtiqueta}>Vista previa de la carta:</Text>
               {previewCarta?.url?.toLowerCase().includes('.pdf') ? (
@@ -504,18 +467,18 @@ export default function CartasScreen() {
                 </View>
               )}
             </View>
-            
+
             <View style={styles.romanticoFooter}>
               <ScrollView style={styles.romanticoDescripcion} showsVerticalScrollIndicator={false}>
                 <Text style={styles.romanticoDescripcionTexto}>
                   {previewCarta?.description || 'Sin descripción'}
                 </Text>
               </ScrollView>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.romanticoBoton}
                 onPress={() => {
                   if (previewCarta?.url) {
-                    const urlPDF = previewCarta?.url?.toLowerCase().includes('.pdf') 
+                    const urlPDF = previewCarta?.url?.toLowerCase().includes('.pdf')
                       ? `https://docs.google.com/viewer?url=${encodeURIComponent(previewCarta?.url || '')}&embedded=true`
                       : previewCarta?.url;
                     Linking.openURL(urlPDF || '');

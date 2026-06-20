@@ -46,3 +46,21 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# InsForge & AI agent skills
+.insforge
+.agent
+.agents
+.augment
+.claude
+.cline
+.github/copilot*
+.kilocode
+.qoder
+.qwen
+.roo
+.trae
+.windsurf
+
+# Firebase service account (migración temporal)
+scripts/firebase-service-account.json

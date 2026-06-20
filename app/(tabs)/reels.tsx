@@ -5,14 +5,15 @@ import { VideoPlayer, useVideoPlayer, VideoView } from 'expo-video';
 import Slider from '@react-native-community/slider';
 import * as ImagePicker from 'expo-image-picker';
 import { getInfoAsync } from 'expo-file-system/legacy';
-import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc, getDocs, limit, startAfter } from 'firebase/firestore';
+import insforge from '../../lib/insforge';
+import { uploadFile, deleteFile } from '../../lib/storage';
 import { COLORS } from '../../src/styles/brand';
-import { db, uploadFile, deleteFile } from '../../lib/firebase';
+import { useAppStore } from '../../store/index';
 
 const { width, height } = Dimensions.get('window');
 
 interface VideoItem {
-  id: string;
+  id: number;
   url: string;
   path: string;
   caption: string;
@@ -29,9 +30,9 @@ function VideoListItem({
 }: { 
   item: VideoItem; 
   isVisible: boolean;
-  optionsId: string | null;
-  setOptionsId: (id: string | null) => void;
-  setEditingVideoId: (id: string | null) => void;
+  optionsId: number | null;
+  setOptionsId: (id: number | null) => void;
+  setEditingVideoId: (id: number | null) => void;
   setEditingCaption: (caption: string) => void;
 }) {
   const player = useVideoPlayer(item.url);
@@ -175,7 +176,7 @@ function VideoListItem({
                       onPress: async () => {
                         try {
                           await deleteFile(item.path);
-                          await deleteDoc(doc(db, 'videos', item.id));
+                          await insforge.database.from('videos').delete().eq('id', item.id);
                         } catch (error) {
                           console.error('Error deleting video:', error);
                         }
@@ -255,58 +256,33 @@ export default function ReelsScreen() {
   const [uploading, setUploading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [videoRef, setVideoRef] = useState<VideoView | null>(null);
-  const [videoOptionsId, setVideoOptionsId] = useState<string | null>(null);
-  const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
+  const [videoOptionsId, setVideoOptionsId] = useState<number | null>(null);
+  const [editingVideoId, setEditingVideoId] = useState<number | null>(null);
   const [editingCaption, setEditingCaption] = useState('');
   const [actionModalVisible, setActionModalVisible] = useState(false);
-  const [lastVisible, setLastVisible] = useState<any>(null);
-  const [moreLoading, setMoreLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const PAGE_SIZE = 10;
 
   useEffect(() => {
-    // carga inicial con límite
-    if (!db) {
-      console.warn('Reels: Firestore no inicializado, omitiendo suscripción inicial');
-      return;
-    }
-    const videosQuery = query(collection(db, 'videos'), orderBy('created_at', 'desc'), limit(PAGE_SIZE));
-    const unsubscribe = onSnapshot(videosQuery, (snapshot) => {
-      const videosData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as VideoItem[];
-      setVideos(videosData);
-      if (snapshot.docs.length > 0) {
-        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
-        setHasMore(snapshot.docs.length === PAGE_SIZE);
-      } else {
-        setHasMore(false);
+    const loadVideos = async () => {
+      try {
+        const { data } = await insforge.database
+          .from('videos')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(PAGE_SIZE);
+        if (data) {
+          setVideos(data as VideoItem[]);
+          setHasMore(data.length === PAGE_SIZE);
+        }
+      } catch (e) {
+        console.error('Error cargando videos', e);
       }
-    });
-
-    return () => unsubscribe();
+    };
+    loadVideos();
+    const interval = setInterval(loadVideos, 5000);
+    return () => clearInterval(interval);
   }, []);
-
-  const loadMoreVideos = async () => {
-    if (!hasMore || moreLoading || !lastVisible) return;
-    setMoreLoading(true);
-    try {
-      if (!db) return;
-      const moreQuery = query(collection(db, 'videos'), orderBy('created_at', 'desc'), startAfter(lastVisible), limit(PAGE_SIZE));
-      const snap = await getDocs(moreQuery);
-      const newVideos = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as VideoItem[];
-      if (newVideos.length > 0) {
-        setVideos(prev => [...prev, ...newVideos]);
-        setLastVisible(snap.docs[snap.docs.length - 1]);
-      }
-      if (newVideos.length < PAGE_SIZE) setHasMore(false);
-    } catch (e) {
-      console.error('Error cargando más videos', e);
-    } finally {
-      setMoreLoading(false);
-    }
-  };
 
   const pickVideo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -347,11 +323,13 @@ export default function ReelsScreen() {
         const path = `videos/${timestamp}.mp4`;
         const url = await uploadFile(tempUri, path);
         
-        await addDoc(collection(db, 'videos'), {
+        await insforge.database.from('videos').insert({
           url,
           path,
           caption: 'Recuerdos',
           created_at: new Date().toISOString(),
+          session_id: useAppStore.getState().sessionId,
+          user_id: useAppStore.getState().user?.id,
         });
         
         alert('Video subido correctamente');
@@ -388,7 +366,7 @@ export default function ReelsScreen() {
           onPress: async () => {
             try {
               await deleteFile(video.path);
-              await deleteDoc(doc(db, 'videos', video.id));
+              await insforge.database.from('videos').delete().eq('id', video.id);
             } catch (error) {
               console.error('Error deleting video:', error);
             }
@@ -434,7 +412,7 @@ export default function ReelsScreen() {
       <FlatList
         data={videos}
         renderItem={renderVideo}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => String(item.id)}
         pagingEnabled
         showsVerticalScrollIndicator={false}
         snapToInterval={height * 0.6}
@@ -452,13 +430,6 @@ export default function ReelsScreen() {
         maxToRenderPerBatch={1}
         windowSize={3}
         initialNumToRender={1}
-        onEndReachedThreshold={0.5}
-        onEndReached={() => loadMoreVideos()}
-        ListFooterComponent={() => hasMore ? (
-          <View style={{ padding: 12, alignItems: 'center' }}>
-            {moreLoading ? <ActivityIndicator color={COLORS.primary} /> : <Text style={{ color: '#8E8E93' }}>Cargar más</Text>}
-          </View>
-        ) : null}
       />
       
       <TouchableOpacity style={styles.floatingButton} onPress={openActionModal}>
@@ -490,7 +461,7 @@ export default function ReelsScreen() {
                 onPress={async () => {
                   if (editingVideoId) {
                     try {
-                      await updateDoc(doc(db, 'videos', editingVideoId), { caption: editingCaption });
+                      await insforge.database.from('videos').update({ caption: editingCaption }).eq('id', editingVideoId);
                       setEditingVideoId(null);
                     } catch (error) {
                       console.error('Error updating caption:', error);
