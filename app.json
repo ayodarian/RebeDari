@@ -35,8 +35,7 @@
       "expo-video",
       "expo-web-browser",
       "expo-audio",
-      "expo-notifications",
-      "expo-dev-client"
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true
