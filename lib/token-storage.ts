@@ -10,6 +10,7 @@ export interface StoredUser {
   id: string;
   email: string;
   nombre: string;
+  avatarUrl?: string | null;
 }
 
 export const tokenStorage = {

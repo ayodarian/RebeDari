@@ -5,10 +5,12 @@ import { VideoPlayer, useVideoPlayer, VideoView } from 'expo-video';
 import Slider from '@react-native-community/slider';
 import * as ImagePicker from 'expo-image-picker';
 import { getInfoAsync } from 'expo-file-system/legacy';
-import insforge from '../../lib/insforge';
+import { getClient } from '../../lib/insforge';
 import { uploadFile, deleteFile } from '../../lib/storage';
-import { COLORS } from '../../src/styles/brand';
 import { useAppStore } from '../../store/index';
+import { useTheme } from '../components/ThemeProvider';
+import { createNotification } from '../../lib/notifications';
+import { subscribeToTable, publishTableEvent } from '../../lib/realtime';
 
 const { width, height } = Dimensions.get('window');
 
@@ -35,6 +37,7 @@ function VideoListItem({
   setEditingVideoId: (id: number | null) => void;
   setEditingCaption: (caption: string) => void;
 }) {
+  const { theme } = useTheme();
   const player = useVideoPlayer(item.url);
   
   const [isPaused, setIsPaused] = useState(false);
@@ -46,83 +49,47 @@ function VideoListItem({
   const sliderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const formatTime = (seconds: number) => {
-    if (seconds === null || seconds === undefined || isNaN(seconds)) {
-      return '00:00';
-    }
+    if (seconds === null || seconds === undefined || isNaN(seconds)) return '00:00';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const hideControlsAfterDelay = useCallback(() => {
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-    }
-    hideTimeoutRef.current = setTimeout(() => {
-      setShowControls(false);
-    }, 1000);
+    if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+    hideTimeoutRef.current = setTimeout(() => setShowControls(false), 1000);
   }, []);
 
   const togglePlayPause = useCallback(() => {
-    if (isPaused) {
-      player.play();
-      setIsPaused(false);
-    } else {
-      player.pause();
-      setIsPaused(true);
-    }
+    if (isPaused) { player.play(); setIsPaused(false); }
+    else { player.pause(); setIsPaused(true); }
     setShowControls(true);
     hideControlsAfterDelay();
   }, [isPaused, player, hideControlsAfterDelay]);
 
   const showSliderWithTimeout = useCallback(() => {
     setShowSlider(true);
-    if (sliderTimeoutRef.current) {
-      clearTimeout(sliderTimeoutRef.current);
-    }
-    sliderTimeoutRef.current = setTimeout(() => {
-      setShowSlider(false);
-    }, 1000);
+    if (sliderTimeoutRef.current) clearTimeout(sliderTimeoutRef.current);
+    sliderTimeoutRef.current = setTimeout(() => setShowSlider(false), 1000);
   }, []);
 
   useEffect(() => {
     if (isVisible) {
-      player.loop = true;
-      player.play();
-      setIsPaused(false);
-      setShowControls(false);
-      setShowSlider(false);
+      player.loop = true; player.play(); setIsPaused(false); setShowControls(false); setShowSlider(false);
     } else {
-      player.pause();
-      setShowControls(false);
-      setShowSlider(false);
+      player.pause(); setShowControls(false); setShowSlider(false);
     }
   }, [isVisible, player]);
 
-  
-
   useEffect(() => {
     if (!player) return;
-    
     player.timeUpdateEventInterval = 1;
-    
-    const timer = setTimeout(() => {
-      if (player.duration > 0) {
-        setDuration(player.duration);
-      }
-    }, 300);
-    
+    const timer = setTimeout(() => { if (player.duration > 0) setDuration(player.duration); }, 300);
     const subscription = player.addListener('timeUpdate', (event: any) => {
       setCurrentTime(event.currentTime);
-      if (player.duration > 0) {
-        setDuration(player.duration);
-      }
+      if (player.duration > 0) setDuration(player.duration);
     });
-
-    return () => {
-      clearTimeout(timer);
-      subscription.remove();
-    };
+    return () => { clearTimeout(timer); subscription.remove(); };
   }, [player]);
 
   const getTimeAgo = (dateStr: string) => {
@@ -137,114 +104,64 @@ function VideoListItem({
   };
   
   return (
-    <Pressable style={styles.videoContainer}>
-      <View style={styles.videoHeader}>
+    <Pressable style={[styles.videoContainer, { backgroundColor: theme.surface }]}>
+      <View style={[styles.videoHeader, { backgroundColor: theme.surface }]}>
         <View style={styles.headerLeft}>
-          <View style={styles.avatar} />
+          <View style={[styles.avatar, { backgroundColor: theme.primary }]} />
           <View style={styles.userInfo}>
-            <Text style={styles.username}>RebeDari</Text>
-            <Text style={styles.timeAgo}>{getTimeAgo(item.created_at)}</Text>
+            <Text style={[styles.username, { color: theme.text }]}>RebeDari</Text>
+            <Text style={[styles.timeAgo, { color: theme.textTertiary }]}>{getTimeAgo(item.created_at)}</Text>
           </View>
         </View>
         <TouchableOpacity onPress={() => setOptionsId(optionsId === item.id ? null : item.id)}>
-          <Text style={styles.moreOptions}>⋮</Text>
+          <Text style={[styles.moreOptions, { color: theme.textTertiary }]}>⋮</Text>
         </TouchableOpacity>
         {optionsId === item.id && (
-          <Pressable style={styles.optionsMenuContainer} onPress={(e) => e.stopPropagation()}>
-            <Pressable 
-              style={styles.optionButton} 
-              onPress={() => {
-                setOptionsId(null);
-                setEditingVideoId(item.id);
-                setEditingCaption(item.caption || 'Recuerdos');
-              }}
-            >
-              <Text style={styles.optionText}>Editar título</Text>
+          <Pressable style={[styles.optionsMenuContainer, { backgroundColor: theme.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Pressable style={styles.optionButton} onPress={() => { setOptionsId(null); setEditingVideoId(item.id); setEditingCaption(item.caption || 'Recuerdos'); }}>
+              <Text style={[styles.optionText, { color: theme.primary }]}>Editar título</Text>
             </Pressable>
-            <Pressable 
-              style={styles.optionButton} 
-              onPress={() => {
-                setOptionsId(null);
-                Alert.alert(
-                  '¿Seguro que quieres eliminar este video?',
-                  'Esta acción no se puede deshacer.',
-                  [
-                    { text: 'Cancelar', style: 'cancel' },
-                    { 
-                      text: 'Eliminar', 
-                      style: 'destructive',
-                      onPress: async () => {
-                        try {
-                          await deleteFile(item.path);
-                          await insforge.database.from('videos').delete().eq('id', item.id);
-                        } catch (error) {
-                          console.error('Error deleting video:', error);
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-            >
-              <Text style={[styles.optionText, styles.optionDeleteText]}>Eliminar video</Text>
+            <Pressable style={styles.optionButton} onPress={() => {
+              setOptionsId(null);
+              Alert.alert('¿Seguro que quieres eliminar este video?', 'Esta acción no se puede deshacer.', [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Eliminar', style: 'destructive', onPress: async () => {
+                  try { await deleteFile(item.path); await getClient().database.from('videos').delete().eq('id', item.id); const sid = useAppStore.getState().sessionId; if (sid) publishTableEvent(`videos:${sid}`, 'videos_changed'); } catch (error) { console.error('Error deleting video:', error); }
+                }},
+              ]);
+            }}>
+              <Text style={[styles.optionText, { color: theme.error }]}>Eliminar video</Text>
             </Pressable>
           </Pressable>
         )}
       </View>
       {isVisible ? (
         <View style={styles.videoWrapper}>
-          <VideoView
-            player={player}
-            style={styles.videoPlayer}
-            contentFit="cover"
-            nativeControls={false}
-          />
-          <Pressable 
-            onPress={togglePlayPause} 
-            style={styles.videoTouchOverlay}
-          />
+          <VideoView player={player} style={styles.videoPlayer} contentFit="cover" nativeControls={false} />
+          <Pressable onPress={togglePlayPause} style={styles.videoTouchOverlay} />
           {showControls && (
             <View style={styles.playPauseOverlay}>
-              <Image 
-                source={require('../../assets/pasue.png')}
-                style={styles.pauseIconImage}
-              />
+              <Image source={require('../../assets/pause.png')} style={styles.pauseIconImage} />
             </View>
           )}
           {showSlider && (
-            <View style={styles.videoControls}>
-              <Slider
-                style={styles.slider}
-minimumValue={0}
-              maximumValue={duration > 0 ? duration : 1}
-                value={currentTime}
-                onSlidingComplete={(value) => {
-                  player.currentTime = value;
-                  setCurrentTime(value);
-                  hideControlsAfterDelay();
-                }}
-                minimumTrackTintColor="#FF6B9D"
-                maximumTrackTintColor="#E0E0E0"
-                thumbTintColor="#FF6B9D"
-              />
-              <Text style={styles.timeText}>
-                {formatTime(currentTime)} / {formatTime(duration)}
-              </Text>
+            <View style={[styles.videoControls, { backgroundColor: `${theme.surface}E6` }]}>
+              <Slider style={styles.slider} minimumValue={0} maximumValue={duration > 0 ? duration : 1} value={currentTime}
+                onSlidingComplete={(value) => { player.currentTime = value; setCurrentTime(value); hideControlsAfterDelay(); }}
+                minimumTrackTintColor={theme.primary} maximumTrackTintColor={theme.border} thumbTintColor={theme.primary} />
+              <Text style={[styles.timeText, { color: theme.textSecondary }]}>{formatTime(currentTime)} / {formatTime(duration)}</Text>
             </View>
           )}
-          <Pressable 
-            onPress={showSliderWithTimeout}
-            style={styles.sliderZone}
-          />
+          <Pressable onPress={showSliderWithTimeout} style={styles.sliderZone} />
         </View>
       ) : (
-        <View style={styles.videoPlaceholder}>
+        <View style={[styles.videoPlaceholder, { backgroundColor: theme.shadow }]}>
           <Text style={styles.placeholderText}>🎬</Text>
-          <Text style={styles.placeholderSubtext}>Video</Text>
+          <Text style={[styles.placeholderSubtext, { color: theme.textTertiary }]}>Video</Text>
         </View>
       )}
       <View style={styles.videoOverlay}>
-        <Text style={styles.caption}>{item.caption || 'Recuerdos'}</Text>
+        <Text style={[styles.caption, { color: theme.text }]}>{item.caption || 'Recuerdos'}</Text>
       </View>
     </Pressable>
   );
@@ -252,6 +169,7 @@ minimumValue={0}
 
 export default function ReelsScreen() {
   const insets = useSafeAreaInsets();
+  const { theme } = useTheme();
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -264,235 +182,128 @@ export default function ReelsScreen() {
   const PAGE_SIZE = 10;
 
   useEffect(() => {
+    const sessionId = useAppStore.getState().sessionId;
+    if (!sessionId) return;
     const loadVideos = async () => {
       try {
-        const { data } = await insforge.database
-          .from('videos')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(PAGE_SIZE);
-        if (data) {
-          setVideos(data as VideoItem[]);
-          setHasMore(data.length === PAGE_SIZE);
-        }
-      } catch (e) {
-        console.error('Error cargando videos', e);
-      }
+        const { data } = await getClient().database.from('videos').select('*').order('created_at', { ascending: false }).limit(PAGE_SIZE);
+        if (data) { setVideos(data as VideoItem[]); setHasMore(data.length === PAGE_SIZE); }
+      } catch (e) { console.error('Error cargando videos', e); }
     };
     loadVideos();
-    const interval = setInterval(loadVideos, 5000);
-    return () => clearInterval(interval);
+    const unsub = subscribeToTable(
+      `videos:${sessionId}`,
+      'videos_changed',
+      loadVideos
+    );
+    return () => unsub();
   }, []);
 
   const pickVideo = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['videos'],
-      allowsEditing: false,
-      quality: ImagePicker.UIImagePickerControllerQualityType.Low,
-      videoMaxDuration: 300,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const videoAsset = result.assets[0];
-      if (videoAsset.duration && videoAsset.duration > 300000) {
-        alert('El video no puede superar los 5 minutos');
-        return;
-      }
-      
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], allowsMultipleSelection: true, selectionLimit: 0, quality: 0.7, videoMaxDuration: 300 });
+    if (!result.canceled && result.assets.length > 0) {
       setUploading(true);
-      const tempUri = videoAsset.uri;
-      
-      let fileSize = 0;
-      try {
-        const fileInfo = await getInfoAsync(tempUri);
-        if (fileInfo.exists && 'size' in fileInfo) {
-          fileSize = (fileInfo as { size: number }).size;
-        }
-      } catch (fileError) {
-        console.warn('No se pudo verificar el tamaño del archivo');
-      }
-
-      if (fileSize > 100 * 1024 * 1024) {
-        alert('El video es demasiado pesado (máx 100MB)');
-        setUploading(false);
-        return;
-      }
-      
       try {
         const timestamp = Date.now();
-        const path = `videos/${timestamp}.mp4`;
-        const url = await uploadFile(tempUri, path);
-        
-        await insforge.database.from('videos').insert({
-          url,
-          path,
-          caption: 'Recuerdos',
-          created_at: new Date().toISOString(),
-          session_id: useAppStore.getState().sessionId,
-          user_id: useAppStore.getState().user?.id,
-        });
-        
-        alert('Video subido correctamente');
-      } catch (error) {
-        alert('Error al subir el video');
-        console.error(error);
-      } finally {
-        setUploading(false);
-      }
+        const totalAssets = result.assets.length;
+        let successCount = 0;
+        for (let i = 0; i < result.assets.length; i++) {
+          const videoAsset = result.assets[i];
+          if (videoAsset.duration && videoAsset.duration > 300000) continue;
+          const tempUri = videoAsset.uri;
+          let fileSize = 0;
+          try { const fileInfo = await getInfoAsync(tempUri); if (fileInfo.exists && 'size' in fileInfo) fileSize = (fileInfo as { size: number }).size; } catch (fileError) { console.warn('No se pudo verificar el tamaño del archivo'); }
+          if (fileSize > 100 * 1024 * 1024) continue;
+          const path = `videos/${timestamp}_${i}.mp4`;
+          const url = await uploadFile(tempUri, path);
+          await getClient().database.from('videos').insert({ url, path, caption: 'Recuerdos', created_at: new Date().toISOString(), session_id: useAppStore.getState().sessionId, user_id: useAppStore.getState().user?.id });
+          successCount++;
+        }
+        const state = useAppStore.getState();
+        if (state.sessionId) {
+          publishTableEvent(`videos:${state.sessionId}`, 'videos_changed');
+          if (state.user) {
+            await createNotification(state.sessionId, state.user.id, state.user.nombre, 'video', 'Nuevo video', `${state.user.nombre} compartió ${successCount} video${successCount > 1 ? 's' : ''}`);
+          }
+        }
+        alert(`${successCount} de ${totalAssets} videos subidos correctamente`);
+      } catch (error) { alert('No se pudieron subir todos los videos'); console.error(error); } finally { setUploading(false); }
     }
   };
 
-  const shuffleVideos = () => {
-    const shuffled = [...videos].sort(() => Math.random() - 0.5);
-    setVideos(shuffled);
-  };
-
+  const shuffleVideos = () => { setVideos([...videos].sort(() => Math.random() - 0.5)); };
   const openActionModal = () => setActionModalVisible(true);
   const closeActionModal = () => setActionModalVisible(false);
-  const handleVideoAction = (action: () => void) => {
-    closeActionModal();
-    action();
-  };
-
-  const deleteVideo = async (video: VideoItem) => {
-    Alert.alert(
-      'Eliminar Video',
-      '¿Estás seguro?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Eliminar', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteFile(video.path);
-              await insforge.database.from('videos').delete().eq('id', video.id);
-            } catch (error) {
-              console.error('Error deleting video:', error);
-            }
-          }
-        },
-      ]
-    );
-  };
+  const handleVideoAction = (action: () => void) => { closeActionModal(); action(); };
 
   const renderVideo = ({ item, index }: { item: VideoItem; index: number }) => (
-    <VideoListItem 
-      item={item} 
-      isVisible={index === currentIndex}
-      optionsId={videoOptionsId === item.id ? videoOptionsId : null}
-      setOptionsId={setVideoOptionsId}
-      setEditingVideoId={setEditingVideoId}
-      setEditingCaption={setEditingCaption}
-    />
+    <VideoListItem item={item} isVisible={index === currentIndex} optionsId={videoOptionsId === item.id ? videoOptionsId : null}
+      setOptionsId={setVideoOptionsId} setEditingVideoId={setEditingVideoId} setEditingCaption={setEditingCaption} />
   );
 
-  const viewabilityConfig = {
-    itemVisiblePercentThreshold: 50,
-  };
-
-  const handleViewabilityChange = ({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      setCurrentIndex(viewableItems[0].index);
-    }
-  };
+  const viewabilityConfig = { itemVisiblePercentThreshold: 50 };
+  const handleViewabilityChange = ({ viewableItems }: any) => { if (viewableItems.length > 0) setCurrentIndex(viewableItems[0].index); };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       {uploading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#FF6B9D" />
-          <Text style={styles.loadingText}>Subiendo video...</Text>
+        <View style={[styles.loadingOverlay, { backgroundColor: `${theme.surface}E6` }]}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.loadingText, { color: theme.primary }]}>Subiendo video...</Text>
         </View>
       )}
       
       <View style={[styles.header, { paddingTop: 5 }]}>
-        <Text style={styles.title}>Reels</Text>
+        <Text style={[styles.title, { color: theme.primary }]}>Reels</Text>
       </View>
-      <FlatList
-        data={videos}
-        renderItem={renderVideo}
-        keyExtractor={(item) => String(item.id)}
-        pagingEnabled
-        showsVerticalScrollIndicator={false}
-        snapToInterval={height * 0.6}
-        snapToAlignment="start"
-        decelerationRate="fast"
-        onViewableItemsChanged={handleViewabilityChange}
-        viewabilityConfig={viewabilityConfig}
+      <FlatList data={videos} renderItem={renderVideo} keyExtractor={(item) => String(item.id)} pagingEnabled showsVerticalScrollIndicator={false}
+        snapToInterval={height * 0.6} snapToAlignment="start" decelerationRate="fast"
+        onViewableItemsChanged={handleViewabilityChange} viewabilityConfig={viewabilityConfig}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Sin videos aún</Text>
-            <Text style={styles.emptySubtext}>Toca + para subir un video</Text>
+            <Text style={[styles.emptyText, { color: theme.textTertiary }]}>Sin videos aún</Text>
+            <Text style={[styles.emptySubtext, { color: theme.textTertiary }]}>Toca + para subir un video</Text>
           </View>
         }
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={1}
-        windowSize={3}
-        initialNumToRender={1}
-      />
+        removeClippedSubviews={true} maxToRenderPerBatch={1} windowSize={3} initialNumToRender={1} />
       
-      <TouchableOpacity style={styles.floatingButton} onPress={openActionModal}>
-        <Text style={styles.floatingButtonText}>+</Text>
+      <TouchableOpacity style={[styles.floatingButton, { backgroundColor: theme.primary }]} onPress={openActionModal}>
+        <Text style={[styles.floatingButtonText, { color: theme.text }]}>+</Text>
       </TouchableOpacity>
 
-      <Modal
-        visible={editingVideoId !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEditingVideoId(null)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setEditingVideoId(null)}>
-          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Editar título</Text>
-            <TextInput
-              style={styles.editCaptionInput}
-              value={editingCaption}
-              onChangeText={setEditingCaption}
-              placeholder="Título del video"
-              placeholderTextColor="#8E8E93"
-            />
+      <Modal visible={editingVideoId !== null} transparent animationType="fade" onRequestClose={() => setEditingVideoId(null)}>
+        <Pressable style={[styles.modalOverlay, { backgroundColor: `${theme.shadow}80` }]} onPress={() => setEditingVideoId(null)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: theme.primary }]}>Editar título</Text>
+            <TextInput style={[styles.editCaptionInput, { backgroundColor: theme.input, color: theme.text }]} value={editingCaption} onChangeText={setEditingCaption} placeholder="Título del video" placeholderTextColor={theme.placeholder} />
             <View style={styles.editModalButtons}>
-              <Pressable style={styles.cancelButton} onPress={() => setEditingVideoId(null)}>
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              <Pressable style={[styles.cancelButton, { borderColor: theme.primary }]} onPress={() => setEditingVideoId(null)}>
+                <Text style={[styles.cancelButtonText, { color: theme.primary }]}>Cancelar</Text>
               </Pressable>
-              <Pressable
-                style={styles.saveButton}
-                onPress={async () => {
-                  if (editingVideoId) {
-                    try {
-                      await insforge.database.from('videos').update({ caption: editingCaption }).eq('id', editingVideoId);
-                      setEditingVideoId(null);
-                    } catch (error) {
-                      console.error('Error updating caption:', error);
-                    }
-                  }
-                }}
-              >
-                <Text style={styles.saveButtonText}>Guardar</Text>
+              <Pressable style={[styles.saveButton, { backgroundColor: theme.primary }]} onPress={async () => {
+                if (editingVideoId) {
+                  try { await getClient().database.from('videos').update({ caption: editingCaption }).eq('id', editingVideoId); setEditingVideoId(null); } catch (error) { console.error('Error updating caption:', error); }
+                }
+              }}>
+                <Text style={[styles.saveButtonText, { color: theme.text }]}>Guardar</Text>
               </Pressable>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      <Modal
-        visible={actionModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={closeActionModal}
-      >
-        <Pressable style={styles.actionModalOverlay} onPress={closeActionModal}>
-          <Pressable style={styles.actionModalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.actionModalTitle}>Agregar contenido</Text>
-            <Pressable style={styles.actionButton} onPress={() => handleVideoAction(pickVideo)}>
-              <Text style={styles.actionButtonText}>🎬 Subir video</Text>
+      <Modal visible={actionModalVisible} transparent animationType="slide" onRequestClose={closeActionModal}>
+        <Pressable style={[styles.actionModalOverlay, { backgroundColor: `${theme.shadow}80` }]} onPress={closeActionModal}>
+          <Pressable style={[styles.actionModalCard, { backgroundColor: theme.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.actionModalTitle, { color: theme.primary }]}>Agregar contenido</Text>
+            <Pressable style={[styles.actionButton, { backgroundColor: theme.primary }]} onPress={() => handleVideoAction(pickVideo)}>
+              <Text style={[styles.actionButtonText, { color: theme.text }]}>🎬 Subir video</Text>
             </Pressable>
-            <Pressable style={styles.actionButton} onPress={() => handleVideoAction(shuffleVideos)}>
-              <Text style={styles.actionButtonText}>🔀 Mezclar contenido</Text>
+            <Pressable style={[styles.actionButton, { backgroundColor: theme.primary }]} onPress={() => handleVideoAction(shuffleVideos)}>
+              <Text style={[styles.actionButtonText, { color: theme.text }]}>🔀 Mezclar contenido</Text>
             </Pressable>
-            <Pressable style={styles.actionCancelButton} onPress={closeActionModal}>
-              <Text style={styles.actionCancelText}>Cancelar</Text>
+            <Pressable style={[styles.actionCancelButton, { borderColor: theme.border }]} onPress={closeActionModal}>
+              <Text style={[styles.actionCancelText, { color: theme.textSecondary }]}>Cancelar</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -502,339 +313,55 @@ export default function ReelsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
-  },
-  header: {
-    paddingBottom: 10,
-    paddingHorizontal: 15,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FF6B9D',
-  },
-  videoContainer: {
-    marginHorizontal: 12,
-    marginBottom: 16,
-    marginTop: 8,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  videoWrapper: {
-    width: '100%',
-    aspectRatio: 9 / 16,
-    position: 'relative',
-  },
-  videoPlayer: {
-    width: '100%',
-    height: '100%',
-  },
-  videoPlaceholder: {
-    width: '100%',
-    aspectRatio: 9 / 16,
-    backgroundColor: '#1A1A1A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  videoTouchOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 10,
-  },
-  placeholderText: {
-    fontSize: 60,
-    color: '#FFFFFF',
-  },
-  placeholderSubtext: {
-    fontSize: 16,
-    color: '#8E8E93',
-    marginTop: 10,
-  },
-  videoOverlay: {
-    position: 'absolute',
-    bottom: 20,
-    left: 15,
-    right: 15,
-  },
-  caption: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    fontWeight: '500',
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: height * 0.6,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#8E8E93',
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#8E8E93',
-    marginTop: 5,
-  },
-  floatingButton: {
-    position: 'absolute',
-    right: 20,
-    bottom: 85,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#FF6B9D',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-    zIndex: 10,
-  },
-  floatingButtonText: {
-    fontSize: 30,
-    color: '#FFFFFF',
-    fontWeight: '300',
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 100,
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#FF6B9D',
-  },
-  videoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#FF6B9D',
-    marginRight: 10,
-  },
-  userInfo: {
-    justifyContent: 'center',
-  },
-  username: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#000000',
-  },
-  timeAgo: {
-    fontSize: 11,
-    color: '#8E8E93',
-    marginTop: 1,
-  },
-  moreOptions: {
-    fontSize: 18,
-    color: '#8E8E93',
-    paddingHorizontal: 4,
-  },
-  optionsMenuContainer: {
-    position: 'absolute',
-    right: 12,
-    top: 50,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-    minWidth: 140,
-    zIndex: 100,
-  },
-  optionButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  optionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FF6B9D',
-  },
-  optionDeleteText: {
-    color: '#FF3B30',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 200,
-  },
-  modalCard: {
-    width: width - 50,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FF6B9D',
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  editCaptionInput: {
-    width: '100%',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    padding: 15,
-    fontSize: 16,
-    color: '#333333',
-    marginBottom: 20,
-  },
-  editModalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    gap: 12,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FF6B9D',
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    color: '#FF6B9D',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  saveButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: '#FF6B9D',
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  playPauseOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.15)',
-  },
-  playPauseIcon: {
-    fontSize: 60,
-  },
-  videoControls: {
-    position: 'absolute',
-    bottom: 50,
-    left: 12,
-    right: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    zIndex: 20,
-  },
-  slider: {
-    width: '100%',
-    height: 40,
-  },
-  timeText: {
-    fontSize: 12,
-    color: '#666666',
-    textAlign: 'center',
-    marginTop: -5,
-  },
-  pauseIconImage: {
-    width: 60,
-    height: 60,
-    resizeMode: 'contain',
-    opacity: 0.9,
-  },
-  sliderZone: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 80,
-    zIndex: 15,
-  },
-  actionModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  actionModalCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    padding: 25,
-    paddingBottom: 40,
-  },
-  actionModalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FF6B9D',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  actionButton: {
-    backgroundColor: '#FF6B9D',
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  actionButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  actionCancelButton: {
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginTop: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  actionCancelText: {
-    fontSize: 16,
-    color: '#666666',
-  },
+  container: { flex: 1 },
+  header: { paddingBottom: 10, paddingHorizontal: 15 },
+  title: { fontSize: 24, fontWeight: 'bold' },
+  videoContainer: { marginHorizontal: 12, marginBottom: 16, marginTop: 8, borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+  videoWrapper: { width: '100%', aspectRatio: 9 / 16, position: 'relative' },
+  videoPlayer: { width: '100%', height: '100%' },
+  videoPlaceholder: { width: '100%', aspectRatio: 9 / 16, alignItems: 'center', justifyContent: 'center' },
+  videoTouchOverlay: { ...StyleSheet.absoluteFill, zIndex: 10 },
+  placeholderText: { fontSize: 60, color: '#FFFFFF' },
+  placeholderSubtext: { fontSize: 16, marginTop: 10 },
+  videoOverlay: { position: 'absolute', bottom: 20, left: 15, right: 15 },
+  caption: { fontSize: 14, fontWeight: '500', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3 },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', height: height * 0.6 },
+  emptyText: { fontSize: 18, fontWeight: '600' },
+  emptySubtext: { fontSize: 14, marginTop: 5 },
+  floatingButton: { position: 'absolute', right: 20, bottom: 85, width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5, zIndex: 10 },
+  floatingButtonText: { fontSize: 30, fontWeight: '300' },
+  loadingOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', zIndex: 100 },
+  loadingText: { marginTop: 10, fontSize: 16 },
+  videoHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  avatar: { width: 32, height: 32, borderRadius: 16, marginRight: 10 },
+  userInfo: { justifyContent: 'center' },
+  username: { fontSize: 14, fontWeight: 'bold' },
+  timeAgo: { fontSize: 11, marginTop: 1 },
+  moreOptions: { fontSize: 18, paddingHorizontal: 4 },
+  optionsMenuContainer: { position: 'absolute', right: 12, top: 50, borderRadius: 16, paddingVertical: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 4, minWidth: 140, zIndex: 100 },
+  optionButton: { paddingVertical: 12, paddingHorizontal: 16 },
+  optionText: { fontSize: 14, fontWeight: '600' },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', zIndex: 200 },
+  modalCard: { width: width - 50, borderRadius: 20, padding: 20 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
+  editCaptionInput: { width: '100%', borderRadius: 12, padding: 15, fontSize: 16, marginBottom: 20 },
+  editModalButtons: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', gap: 12 },
+  cancelButton: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
+  cancelButtonText: { fontSize: 14, fontWeight: '600' },
+  saveButton: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  saveButtonText: { fontSize: 14, fontWeight: '600' },
+  playPauseOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.15)' },
+  videoControls: { position: 'absolute', bottom: 50, left: 12, right: 12, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, zIndex: 20 },
+  slider: { width: '100%', height: 40 },
+  timeText: { fontSize: 12, textAlign: 'center', marginTop: -5 },
+  pauseIconImage: { width: 60, height: 60, resizeMode: 'contain', opacity: 0.9 },
+  sliderZone: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80, zIndex: 15 },
+  actionModalOverlay: { flex: 1, justifyContent: 'flex-end' },
+  actionModalCard: { borderTopLeftRadius: 30, borderTopRightRadius: 30, borderBottomLeftRadius: 30, borderBottomRightRadius: 30, padding: 25, paddingBottom: 40 },
+  actionModalTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
+  actionButton: { paddingVertical: 16, borderRadius: 16, marginBottom: 12, alignItems: 'center' },
+  actionButtonText: { fontSize: 16, fontWeight: '600' },
+  actionCancelButton: { paddingVertical: 16, borderRadius: 16, marginTop: 8, alignItems: 'center', borderWidth: 1 },
+  actionCancelText: { fontSize: 16 },
 });

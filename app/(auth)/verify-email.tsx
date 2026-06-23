@@ -2,12 +2,14 @@ import { View, Text, StyleSheet, TextInput, Pressable, Alert, KeyboardAvoidingVi
 import { useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAppStore } from '../../store/index';
-import { PrimaryButton, COLORS } from '../../src/styles/brand';
+import { useTheme } from '../components/ThemeProvider';
+import { PrimaryButton } from '../../src/styles/brand';
 
 export default function VerifyEmailScreen() {
   const router = useRouter();
   const { email } = useLocalSearchParams<{ email: string }>();
   const { verifyEmail } = useAppStore();
+  const { theme } = useTheme();
 
   const [code, setCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -37,22 +39,22 @@ export default function VerifyEmailScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: theme.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>RebeDari</Text>
-        <Text style={styles.subtitle}>Verificar email</Text>
+        <Text style={[styles.title, { color: theme.primary }]}>RebeDari</Text>
+        <Text style={[styles.subtitle, { color: theme.text }]}>Verificar email</Text>
 
         <View style={styles.form}>
-          <Text style={styles.description}>
+          <Text style={[styles.description, { color: theme.textSecondary }]}>
             Ingresa el código de 6 dígitos que enviamos a{'\n'}
-            <Text style={styles.email}>{email}</Text>
+            <Text style={[styles.email, { color: theme.text }]}>{email}</Text>
           </Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: theme.input, color: theme.inputText }]}
             placeholder="Código de verificación"
-            placeholderTextColor="#8E8E93"
+            placeholderTextColor={theme.placeholder}
             value={code}
             onChangeText={setCode}
             keyboardType="number-pad"
@@ -67,7 +69,7 @@ export default function VerifyEmailScreen() {
             <PrimaryButton title="Verificar email" onPress={handleVerify} />
           )}
           <Pressable onPress={() => router.back()}>
-            <Text style={styles.linkText}>Volver</Text>
+            <Text style={[styles.linkText, { color: theme.primary }]}>Volver</Text>
           </Pressable>
         </View>
       </View>
@@ -78,7 +80,6 @@ export default function VerifyEmailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   content: {
     flex: 1,
@@ -88,32 +89,27 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#FF6B9D',
     textAlign: 'center',
     marginBottom: 10,
   },
   subtitle: {
     fontSize: 18,
-    color: '#000000',
     textAlign: 'center',
     marginBottom: 40,
   },
   description: {
     fontSize: 14,
-    color: '#666666',
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 20,
   },
   email: {
     fontWeight: '600',
-    color: '#333333',
   },
   form: {
     width: '100%',
   },
   input: {
-    backgroundColor: '#F5F5F5',
     borderRadius: 12,
     paddingHorizontal: 15,
     paddingVertical: 15,
@@ -132,7 +128,6 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   linkText: {
-    color: '#FF6B9D',
     fontSize: 14,
     textAlign: 'center',
     marginVertical: 10,

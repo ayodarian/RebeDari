@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Easing } from 'react-native';
 import { useState, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../components/ThemeProvider';
 
 type GameType = 'ruleta' | 'ppt';
 type Choice = 'piedra' | 'papel' | 'tijera' | null;
@@ -21,12 +22,11 @@ const RULETA_RESULTS = ['Gana Dariancin', 'Gana Lebebe'];
 
 export default function DedosScreen() {
   const insets = useSafeAreaInsets();
+  const { theme } = useTheme();
   
-  // Estado global: juego activo e historial
   const [activeGame, setActiveGame] = useState<GameType>('ruleta');
   const [history, setHistory] = useState<HistoryItem[]>([]);
   
-  // === JUEGO 1: RULETA DE DECISIONES ===
   const [ruletaTexto, setRuletaTexto] = useState('¿Quién gana?');
   const [isSpinning, setIsSpinning] = useState(false);
   const ruletaIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -51,70 +51,41 @@ export default function DedosScreen() {
       setIsSpinning(false);
       
       const now = new Date();
-      const dateStr = now.toLocaleString('es-ES', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+      const dateStr = now.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
       
-      const newItem: HistoryItem = {
-        game: 'Ruleta',
-        result: winner,
-        date: dateStr
-      };
+      const newItem: HistoryItem = { game: 'Ruleta', result: winner, date: dateStr };
       setHistory([newItem, ...history].slice(0, 10));
     }, 3000);
   };
   
-  // === JUEGO 2: PIEDRA, PAPEL, TIJERA (CIEGO) ===
   const [eleccionDarian, setEleccionDarian] = useState<Choice>(null);
   const [eleccionLebebe, setEleccionLebebe] = useState<Choice>(null);
   const [faseJuego, setFaseJuego] = useState<'seleccion' | 'revelacion'>('seleccion');
   const [pptGanador, setPptGanador] = useState<string | null>(null);
   
   const seleccionar = (jugador: 'darian' | 'lebebe', choice: Choice) => {
-    if (jugador === 'darian') {
-      setEleccionDarian(choice);
-    } else {
-      setEleccionLebebe(choice);
-    }
+    if (jugador === 'darian') setEleccionDarian(choice);
+    else setEleccionLebebe(choice);
   };
   
   const revelarGanador = () => {
     if (!eleccionDarian || !eleccionLebebe) return;
     
     let winner = '';
-    
-    // Reglas clásico: Piedra vence Tijera, Tijera vence Papel, Papel vence Piedra
-    if (eleccionDarian === eleccionLebebe) {
-      winner = 'Empate';
-    } else if (
+    if (eleccionDarian === eleccionLebebe) winner = 'Empate';
+    else if (
       (eleccionDarian === 'piedra' && eleccionLebebe === 'tijera') ||
       (eleccionDarian === 'tijera' && eleccionLebebe === 'papel') ||
       (eleccionDarian === 'papel' && eleccionLebebe === 'piedra')
-    ) {
-      winner = 'Gana Dariancin';
-    } else {
-      winner = 'Gana Lebebe';
-    }
+    ) winner = 'Gana Dariancin';
+    else winner = 'Gana Lebebe';
     
     setPptGanador(`${EMOJIS[eleccionDarian as Exclude<Choice, null>]} vs ${EMOJIS[eleccionLebebe as Exclude<Choice, null>]} - ¡${winner}!`);
     setFaseJuego('revelacion');
     
     const now = new Date();
-    const dateStr = now.toLocaleString('es-ES', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-    
-    const newItem: HistoryItem = {
-      game: 'PPT',
-      result: winner,
-      date: dateStr
-    };
+    const dateStr = now.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const newItem: HistoryItem = { game: 'PPT', result: winner, date: dateStr };
     setHistory([newItem, ...history].slice(0, 10));
   };
   
@@ -125,14 +96,12 @@ export default function DedosScreen() {
     setPptGanador(null);
   };
   
-  // === COMPONENTES UI ===
-  
   const TabButton = ({ label, game }: { label: string; game: GameType }) => (
     <Pressable
-      style={[styles.tabButton, activeGame === game && styles.tabButtonActive]}
+      style={[styles.tabButton, { backgroundColor: activeGame === game ? `${theme.primary}B3` : `${theme.primaryLight}80` }]}
       onPress={() => setActiveGame(game)}
     >
-      <Text style={[styles.tabButtonText, activeGame === game && styles.tabButtonTextActive]}>
+      <Text style={[styles.tabButtonText, { color: activeGame === game ? theme.text : theme.textSecondary }]}>
         {label}
       </Text>
     </Pressable>
@@ -140,7 +109,7 @@ export default function DedosScreen() {
   
   const OptionButton = ({ emoji, onPress, selected, disabled }: { emoji: string; onPress: () => void; selected?: boolean; disabled?: boolean }) => (
     <Pressable
-      style={[styles.optionButton, selected && styles.optionButtonSelected, disabled && styles.optionButtonDisabled]}
+      style={[styles.optionButton, { backgroundColor: selected ? `${theme.primary}4D` : `${theme.surface}`, borderColor: selected ? theme.primary : `${theme.primary}4D` }, disabled && styles.optionButtonDisabled]}
       onPress={onPress}
       disabled={disabled}
     >
@@ -149,27 +118,25 @@ export default function DedosScreen() {
   );
   
   const HistorialItem = ({ item, index }: { item: HistoryItem; index: number }) => (
-    <View style={styles.historyItem}>
-      <Text style={styles.historyGame}>{item.game}</Text>
-      <Text style={styles.historyResult}>{item.result}</Text>
-      <Text style={styles.historyDate}>{item.date}</Text>
+    <View style={[styles.historyItem, { borderBottomColor: theme.border }]}>
+      <Text style={[styles.historyGame, { color: theme.primary }]}>{item.game}</Text>
+      <Text style={[styles.historyResult, { color: theme.text }]}>{item.result}</Text>
+      <Text style={[styles.historyDate, { color: theme.textTertiary }]}>{item.date}</Text>
     </View>
   );
   
-  // === RENDERIZADO ===
-  
   const renderRuleta = () => (
     <View style={styles.gameContainer}>
-      <View style={styles.ruletaBox}>
-        <Text style={styles.ruletaTexto}>{ruletaTexto}</Text>
+      <View style={[styles.ruletaBox, { backgroundColor: theme.surface }]}>
+        <Text style={[styles.ruletaTexto, { color: theme.primary }]}>{ruletaTexto}</Text>
       </View>
       
       <Pressable
-        style={[styles.girarButton, isSpinning && styles.girarButtonDisabled]}
+        style={[styles.girarButton, { backgroundColor: theme.primary }, isSpinning && styles.girarButtonDisabled]}
         onPress={spinRuleta}
         disabled={isSpinning}
       >
-        <Text style={styles.girarButtonText}>
+        <Text style={[styles.girarButtonText, { color: theme.text }]}>
           {isSpinning ? 'Girando...' : '🎰 Girar'}
         </Text>
       </Pressable>
@@ -183,9 +150,8 @@ export default function DedosScreen() {
       return (
         <View style={styles.gameContainer}>
           <View style={styles.pptContainer}>
-            {/* Columna Dariancin */}
             <View style={styles.pptColumn}>
-              <Text style={styles.pptLabel}>Dariancin</Text>
+              <Text style={[styles.pptLabel, { color: theme.text }]}>Dariancin</Text>
               {eleccionDarian ? (
                 <View style={styles.readyBox}>
                   <Text style={styles.readyText}>✅ Listo</Text>
@@ -193,21 +159,16 @@ export default function DedosScreen() {
               ) : (
                 <View style={styles.optionsRow}>
                   {OPTIONS.map((opt) => (
-                    <OptionButton
-                      key={opt}
-                      emoji={EMOJIS[opt]}
-                      onPress={() => seleccionar('darian', opt)}
-                    />
+                    <OptionButton key={opt} emoji={EMOJIS[opt]} onPress={() => seleccionar('darian', opt)} />
                   ))}
                 </View>
               )}
             </View>
             
-            <Text style={styles.pptVS}>VS</Text>
+            <Text style={[styles.pptVS, { color: theme.textTertiary }]}>VS</Text>
             
-            {/* Columna Lebebe */}
             <View style={styles.pptColumn}>
-              <Text style={styles.pptLabel}>Lebebe</Text>
+              <Text style={[styles.pptLabel, { color: theme.text }]}>Lebebe</Text>
               {eleccionLebebe ? (
                 <View style={styles.readyBox}>
                   <Text style={styles.readyText}>✅ Listo</Text>
@@ -215,11 +176,7 @@ export default function DedosScreen() {
               ) : (
                 <View style={styles.optionsRow}>
                   {OPTIONS.map((opt) => (
-                    <OptionButton
-                      key={opt}
-                      emoji={EMOJIS[opt]}
-                      onPress={() => seleccionar('lebebe', opt)}
-                    />
+                    <OptionButton key={opt} emoji={EMOJIS[opt]} onPress={() => seleccionar('lebebe', opt)} />
                   ))}
                 </View>
               )}
@@ -227,11 +184,11 @@ export default function DedosScreen() {
           </View>
           
           <Pressable
-            style={[styles.revelarButton, !ambosListos && styles.revelarButtonDisabled]}
+            style={[styles.revelarButton, { backgroundColor: theme.primary }, !ambosListos && styles.revelarButtonDisabled]}
             onPress={revelarGanador}
             disabled={!ambosListos}
           >
-            <Text style={styles.revelarButtonText}>
+            <Text style={[styles.revelarButtonText, { color: theme.text }]}>
               {ambosListos ? '🎯 Revelar Ganador' : 'Esperando...'}
             </Text>
           </Pressable>
@@ -239,44 +196,38 @@ export default function DedosScreen() {
       );
     }
     
-    // Fase revelación
     return (
       <View style={styles.gameContainer}>
-        <View style={styles.resultadoBox}>
-          <Text style={styles.resultadoTexto}>{pptGanador}</Text>
+        <View style={[styles.resultadoBox, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.resultadoTexto, { color: theme.primary }]}>{pptGanador}</Text>
         </View>
         
-        <Pressable style={styles.jugarDeNuevoButton} onPress={reiniciarPPT}>
-          <Text style={styles.jugarDeNuevoText}>🔄 Jugar de nuevo</Text>
+        <Pressable style={[styles.jugarDeNuevoButton, { backgroundColor: theme.primary }]} onPress={reiniciarPPT}>
+          <Text style={[styles.jugarDeNuevoText, { color: theme.text }]}>🔄 Jugar de nuevo</Text>
         </Pressable>
       </View>
     );
   };
   
-  // === MAIN RENDER ===
-  
   return (
-    <View style={[styles.container, { paddingTop: 5 }]}>
+    <View style={[styles.container, { backgroundColor: theme.background, paddingTop: 5 }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Dedos</Text>
+        <Text style={[styles.title, { color: theme.primary }]}>Dedos</Text>
       </View>
       
-      {/* Tabs para cambiar juego */}
       <View style={styles.tabsContainer}>
         <TabButton label="Ruleta" game="ruleta" />
         <TabButton label="Piedra, Papel, Tijera" game="ppt" />
       </View>
       
-      {/* Juego activo */}
       <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
         {activeGame === 'ruleta' ? renderRuleta() : renderPPT()}
         
-        {/* Historial */}
         <View style={styles.historySection}>
-          <Text style={styles.historyTitle}>Historial</Text>
-          <View style={styles.historyList}>
+          <Text style={[styles.historyTitle, { color: theme.text }]}>Historial</Text>
+          <View style={[styles.historyList, { backgroundColor: theme.surface }]}>
             {history.length === 0 ? (
-              <Text style={styles.historyEmpty}>Sin jugadas aún</Text>
+              <Text style={[styles.historyEmpty, { color: theme.textTertiary }]}>Sin jugadas aún</Text>
             ) : (
               history.map((item, index) => (
                 <HistorialItem key={index} item={item} index={index} />
@@ -290,229 +241,43 @@ export default function DedosScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
-  },
-  header: {
-    paddingBottom: 15,
-    paddingHorizontal: 15,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FF6B9D',
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 15,
-    marginBottom: 20,
-    gap: 10,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 182, 193, 0.5)',
-    alignItems: 'center',
-  },
-  tabButtonActive: {
-    backgroundColor: 'rgba(255, 107, 157, 0.7)',
-  },
-  tabButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666666',
-  },
-  tabButtonTextActive: {
-    color: '#FFFFFF',
-  },
-  scrollContainer: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 110,
-    paddingHorizontal: 15,
-  },
-  gameContainer: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  
-  // === RULETA STYLES ===
-  ruletaBox: {
-    width: '100%',
-    paddingVertical: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderRadius: 20,
-    alignItems: 'center',
-    marginBottom: 25,
-  },
-  ruletaTexto: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FF6B9D',
-    textAlign: 'center',
-  },
-  girarButton: {
-    backgroundColor: '#FF6B9D',
-    paddingVertical: 15,
-    paddingHorizontal: 50,
-    borderRadius: 25,
-  },
-  girarButtonDisabled: {
-    opacity: 0.5,
-  },
-  girarButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  
-  // === PPT STYLES ===
-  pptContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 25,
-  },
-  pptColumn: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  pptLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 15,
-  },
-  pptVS: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#8E8E93',
-    marginHorizontal: 15,
-  },
-  optionsRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  optionButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 107, 157, 0.3)',
-  },
-  optionButtonSelected: {
-    backgroundColor: 'rgba(255, 107, 157, 0.3)',
-    borderColor: '#FF6B9D',
-  },
-  optionButtonDisabled: {
-    opacity: 0.5,
-  },
-  optionEmoji: {
-    fontSize: 28,
-  },
-  readyBox: {
-    width: 80,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#90EE90',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  readyText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  revelarButton: {
-    backgroundColor: '#FF6B9D',
-    paddingVertical: 15,
-    paddingHorizontal: 40,
-    borderRadius: 25,
-  },
-  revelarButtonDisabled: {
-    opacity: 0.5,
-  },
-  revelarButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  resultadoBox: {
-    width: '100%',
-    paddingVertical: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    borderRadius: 20,
-    alignItems: 'center',
-    marginBottom: 25,
-  },
-  resultadoTexto: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#FF6B9D',
-    textAlign: 'center',
-  },
-  jugarDeNuevoButton: {
-    backgroundColor: '#FF6B9D',
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 20,
-  },
-  jugarDeNuevoText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  
-  // === HISTORIAL STYLES ===
-  historySection: {
-    marginTop: 20,
-  },
-  historyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  historyList: {
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderRadius: 15,
-    padding: 15,
-    minHeight: 100,
-  },
-  historyItem: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  historyGame: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#FF6B9D',
-    width: 50,
-  },
-  historyResult: {
-    flex: 1,
-    fontSize: 14,
-    color: '#333333',
-    textAlign: 'center',
-  },
-  historyDate: {
-    fontSize: 12,
-    color: '#8E8E93',
-  },
-  historyEmpty: {
-    fontSize: 14,
-    color: '#8E8E93',
-    textAlign: 'center',
-    marginTop: 20,
-  },
+  container: { flex: 1 },
+  header: { paddingBottom: 15, paddingHorizontal: 15 },
+  title: { fontSize: 24, fontWeight: 'bold' },
+  tabsContainer: { flexDirection: 'row', paddingHorizontal: 15, marginBottom: 20, gap: 10 },
+  tabButton: { flex: 1, paddingVertical: 12, paddingHorizontal: 15, borderRadius: 20, alignItems: 'center' },
+  tabButtonText: { fontSize: 14, fontWeight: '600' },
+  scrollContainer: { flex: 1 },
+  scrollContent: { paddingBottom: 110, paddingHorizontal: 15 },
+  gameContainer: { alignItems: 'center', marginBottom: 30 },
+  ruletaBox: { width: '100%', paddingVertical: 40, borderRadius: 20, alignItems: 'center', marginBottom: 25 },
+  ruletaTexto: { fontSize: 24, fontWeight: 'bold', textAlign: 'center' },
+  girarButton: { paddingVertical: 15, paddingHorizontal: 50, borderRadius: 25 },
+  girarButtonDisabled: { opacity: 0.5 },
+  girarButtonText: { fontSize: 18, fontWeight: 'bold' },
+  pptContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 25 },
+  pptColumn: { alignItems: 'center', flex: 1 },
+  pptLabel: { fontSize: 16, fontWeight: 'bold', marginBottom: 15 },
+  pptVS: { fontSize: 20, fontWeight: 'bold', marginHorizontal: 15 },
+  optionsRow: { flexDirection: 'row', gap: 10 },
+  optionButton: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
+  optionButtonDisabled: { opacity: 0.5 },
+  optionEmoji: { fontSize: 28 },
+  readyBox: { width: 80, height: 60, borderRadius: 30, backgroundColor: '#90EE90', alignItems: 'center', justifyContent: 'center' },
+  readyText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 12 },
+  revelarButton: { paddingVertical: 15, paddingHorizontal: 40, borderRadius: 25 },
+  revelarButtonDisabled: { opacity: 0.5 },
+  revelarButtonText: { fontSize: 16, fontWeight: 'bold' },
+  resultadoBox: { width: '100%', paddingVertical: 40, borderRadius: 20, alignItems: 'center', marginBottom: 25 },
+  resultadoTexto: { fontSize: 22, fontWeight: 'bold', textAlign: 'center' },
+  jugarDeNuevoButton: { paddingVertical: 12, paddingHorizontal: 30, borderRadius: 20 },
+  jugarDeNuevoText: { fontSize: 14, fontWeight: '600' },
+  historySection: { marginTop: 20 },
+  historyTitle: { fontSize: 16, fontWeight: '600', marginBottom: 10, textAlign: 'center' },
+  historyList: { borderRadius: 15, padding: 15, minHeight: 100 },
+  historyItem: { flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1 },
+  historyGame: { fontSize: 12, fontWeight: 'bold', width: 50 },
+  historyResult: { flex: 1, fontSize: 14, textAlign: 'center' },
+  historyDate: { fontSize: 12 },
+  historyEmpty: { fontSize: 14, textAlign: 'center', marginTop: 20 },
 });

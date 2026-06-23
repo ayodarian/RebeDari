@@ -5,7 +5,8 @@ import Constants from 'expo-constants';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { useAppStore } from '../../store/index';
-import { PrimaryButton, COLORS } from '../../src/styles/brand';
+import { useTheme } from '../components/ThemeProvider';
+import { PrimaryButton } from '../../src/styles/brand';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -20,6 +21,7 @@ export default function LoginScreen() {
   const params = useLocalSearchParams();
   const inviteToken = params.inviteToken as string | undefined;
   const { login, register, recoverPassword, signInWithIdToken } = useAppStore();
+  const { theme } = useTheme();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,7 +32,6 @@ export default function LoginScreen() {
 
   const inExpoGo = isExpoGo();
 
-  // Google ID Token request
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: GOOGLE_WEB_CLIENT_ID || undefined,
   });
@@ -196,12 +197,12 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: theme.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>RebeDari</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, { color: theme.primary }]}>RebeDari</Text>
+        <Text style={[styles.subtitle, { color: theme.text }]}>
           {recoveryMode
             ? 'Recupera tu cuenta'
             : isRegistering
@@ -212,9 +213,9 @@ export default function LoginScreen() {
         {recoveryMode ? (
           <View style={styles.form}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: theme.input, color: theme.inputText }]}
               placeholder="Email de recuperación"
-              placeholderTextColor="#8E8E93"
+              placeholderTextColor={theme.placeholder}
               value={recoveryEmail}
               onChangeText={setRecoveryEmail}
               keyboardType="email-address"
@@ -228,24 +229,24 @@ export default function LoginScreen() {
               <PrimaryButton title="Enviar código" onPress={handleRecovery} />
             )}
             <Pressable onPress={() => setRecoveryMode(false)}>
-              <Text style={styles.linkText}>Volver a iniciar sesión</Text>
+              <Text style={[styles.linkText, { color: theme.primary }]}>Volver a iniciar sesión</Text>
             </Pressable>
           </View>
         ) : (
           <View style={styles.form}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: theme.input, color: theme.inputText }]}
               placeholder="Email"
-              placeholderTextColor="#8E8E93"
+              placeholderTextColor={theme.placeholder}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
               keyboardType="email-address"
             />
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: theme.input, color: theme.inputText }]}
               placeholder="Contraseña"
-              placeholderTextColor="#8E8E93"
+              placeholderTextColor={theme.placeholder}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -258,10 +259,10 @@ export default function LoginScreen() {
               <PrimaryButton title={isRegistering ? 'Crear cuenta' : 'Entrar'} onPress={isRegistering ? handleRegister : handleLogin} />
             )}
             <Pressable onPress={() => setRecoveryMode(true)}>
-              <Text style={styles.linkText}>¿Olvidaste tu contraseña?</Text>
+              <Text style={[styles.linkText, { color: theme.primary }]}>¿Olvidaste tu contraseña?</Text>
             </Pressable>
             <Pressable onPress={() => setIsRegistering(!isRegistering)}>
-              <Text style={styles.linkText}>
+              <Text style={[styles.linkText, { color: theme.primary }]}>
                 {isRegistering
                   ? '¿Ya tienes cuenta? Entrar'
                   : 'Crear nueva cuenta'}
@@ -271,13 +272,13 @@ export default function LoginScreen() {
             {showGoogleButton && (
               <>
                 <View style={styles.dividerContainer}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>o continúa con</Text>
-                  <View style={styles.dividerLine} />
+                  <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+                  <Text style={[styles.dividerText, { color: theme.textTertiary }]}>o continúa con</Text>
+                  <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
                 </View>
 
-                <Pressable style={styles.oauthButton} onPress={handleGoogleLogin}>
-                  <Text style={styles.oauthButtonText}>G   Google</Text>
+                <Pressable style={[styles.oauthButton, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={handleGoogleLogin}>
+                  <Text style={[styles.oauthButtonText, { color: theme.text }]}>G   Google</Text>
                 </Pressable>
               </>
             )}
@@ -291,7 +292,6 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   content: {
     flex: 1,
@@ -301,13 +301,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#FF6B9D',
     textAlign: 'center',
     marginBottom: 10,
   },
   subtitle: {
     fontSize: 18,
-    color: '#000000',
     textAlign: 'center',
     marginBottom: 40,
   },
@@ -315,7 +313,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   input: {
-    backgroundColor: '#F5F5F5',
     borderRadius: 12,
     paddingHorizontal: 15,
     paddingVertical: 15,
@@ -333,7 +330,6 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   linkText: {
-    color: '#FF6B9D',
     fontSize: 14,
     textAlign: 'center',
     marginVertical: 10,
@@ -346,24 +342,19 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#E5E5EA',
   },
   dividerText: {
-    color: '#8E8E93',
     fontSize: 13,
     marginHorizontal: 12,
   },
   oauthButton: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
   },
   oauthButtonText: {
-    color: '#000000',
     fontSize: 16,
     fontWeight: '500',
   },

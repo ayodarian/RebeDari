@@ -1,147 +1,270 @@
-import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator, TextInput, ScrollView, Image, Switch } from 'react-native';
 import { useState } from 'react';
-import * as Sharing from 'expo-sharing';
+import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { useAppStore } from '../../store/index';
-import { PrimaryButton } from '../../src/styles/brand';
+import { getClient } from '../../lib/insforge';
+import { uploadFile } from '../../lib/storage';
+import { useTheme } from '../components/ThemeProvider';
+import { BackupPanel } from '../components/BackupPanel';
 
 export default function ProfileScreen() {
-  const { user, partnerId, sessionId, createInvite, leaveSession } = useAppStore();
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const router = useRouter();
+  const { user, logout, updateProfile } = useAppStore();
+  const { theme, isDark, toggleTheme } = useTheme();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editNombre, setEditNombre] = useState(user?.nombre || '');
+  const [editEmail, setEditEmail] = useState(user?.email || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
-  const handleGenerateInvite = async () => {
-    setIsGenerating(true);
+  const handlePickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permiso denegado', 'Necesitamos acceso a tus fotos para cambiar tu avatar');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      const image = result.assets[0];
+      setIsUploadingAvatar(true);
+      try {
+        const fileExt = image.uri.split('.').pop() || 'jpg';
+        const fileName = `avatar_${user?.id}_${Date.now()}.${fileExt}`;
+        const path = `avatars/${fileName}`;
+
+        const avatarUrl = await uploadFile(image.uri, path);
+        await updateProfile({ avatarUrl });
+        Alert.alert('Éxito', 'Avatar actualizado');
+      } catch (error: any) {
+        Alert.alert('Error', error.message || 'No se pudo subir el avatar');
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    setIsSaving(true);
     try {
-      const token = await createInvite();
-      setInviteToken(token);
+      await updateProfile({
+        nombre: editNombre,
+        email: editEmail,
+      });
+      setIsEditing(false);
+      Alert.alert('Éxito', 'Perfil actualizado');
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo generar la invitación');
+      Alert.alert('Error', error.message || 'No se pudo actualizar el perfil');
     } finally {
-      setIsGenerating(false);
+      setIsSaving(false);
     }
   };
 
-  const handleShareInvite = async () => {
-    if (!inviteToken) return;
-    const link = `rebedari://invite/${inviteToken}`;
-    try {
-      await Sharing.shareAsync(link);
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo compartir el link');
-    }
-  };
-
-  const handleLeaveSession = async () => {
+  const handleLogout = async () => {
     Alert.alert(
-      'Desvincular pareja',
-      '¿Estás seguro? Esto eliminará la conexión con tu pareja.',
+      'Cerrar sesión',
+      '¿Estás seguro que deseas cerrar sesión?',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Desvincular',
+          text: 'Cerrar sesión',
           style: 'destructive',
           onPress: async () => {
-            try {
-              await leaveSession();
-              setInviteToken(null);
-              Alert.alert('Listo', 'Te has desvinculado de tu pareja');
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'No se pudo desvincular');
-            }
+            await logout();
+            router.replace('/(auth)');
           },
         },
       ]
     );
   };
 
+  const getInitials = (name: string) => {
+    return name.charAt(0).toUpperCase();
+  };
+
   return (
-    <View style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Mi Perfil</Text>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Mi email</Text>
-          <Text style={styles.value}>{user?.email || 'No disponible'}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Mi ID</Text>
-          <Text style={styles.valueSmall}>{user?.id || 'No disponible'}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Sesión</Text>
-          <Text style={styles.value}>{sessionId || 'Sin sesión'}</Text>
-        </View>
-
-        {partnerId ? (
-          <View style={styles.card}>
-            <Text style={styles.label}>Pareja vinculada</Text>
-            <Text style={styles.value}>{partnerId}</Text>
-            <Pressable style={styles.leaveButton} onPress={handleLeaveSession}>
-              <Text style={styles.leaveButtonText}>Desvincular pareja</Text>
-            </Pressable>
+    <ScrollView style={[styles.container, { backgroundColor: theme.background }]} contentContainerStyle={styles.content}>
+      <View style={styles.avatarSection}>
+        <Pressable onPress={handlePickAvatar} disabled={isUploadingAvatar} style={[styles.avatarContainer, { backgroundColor: theme.primary }]}>
+          {isUploadingAvatar ? (
+            <ActivityIndicator size="large" color={theme.text} />
+          ) : user?.avatarUrl ? (
+            <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatarPlaceholder, { backgroundColor: theme.primary }]}>
+              <Text style={styles.avatarInitials}>
+                {user?.nombre ? getInitials(user.nombre) : '?'}
+              </Text>
+            </View>
+          )}
+          <View style={[styles.cameraIcon, { backgroundColor: theme.surface, borderColor: theme.primary }]}>
+            <Text style={styles.cameraIconText}>📷</Text>
           </View>
-        ) : (
-          <View style={styles.card}>
-            <Text style={styles.label}>Vincular pareja</Text>
-            <Text style={styles.description}>
-              Genera un link de invitación y compártelo con tu pareja para vincular sus cuentas.
-            </Text>
+        </Pressable>
+        <Text style={[styles.avatarHint, { color: theme.textSecondary }]}>Toca para cambiar foto</Text>
+      </View>
 
-            {inviteToken ? (
-              <View style={styles.inviteContainer}>
-                <Text style={styles.inviteToken}>{inviteToken}</Text>
-                <Text style={styles.inviteLink}>rebedari://invite/{inviteToken}</Text>
-                <Pressable style={styles.shareButton} onPress={handleShareInvite}>
-                  <Text style={styles.shareButtonText}>Compartir link</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.newInviteButton}
-                  onPress={handleGenerateInvite}
-                  disabled={isGenerating}
-                >
-                  <Text style={styles.newInviteButtonText}>Generar nuevo link</Text>
-                </Pressable>
-              </View>
-            ) : (
+      <View style={[styles.section, { backgroundColor: theme.surface }]}>
+        <Text style={[styles.sectionTitle, { color: theme.primary }]}>Información personal</Text>
+        
+        {isEditing ? (
+          <>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Nombre</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: theme.input, color: theme.inputText }]}
+                value={editNombre}
+                onChangeText={setEditNombre}
+                placeholder="Tu nombre"
+                placeholderTextColor={theme.placeholder}
+              />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Email</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: theme.input, color: theme.inputText }]}
+                value={editEmail}
+                onChangeText={setEditEmail}
+                placeholder="tu@email.com"
+                placeholderTextColor={theme.placeholder}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+            <View style={styles.buttonRow}>
               <Pressable
-                style={styles.generateButton}
-                onPress={handleGenerateInvite}
-                disabled={isGenerating}
+                style={[styles.button, styles.cancelButton, { backgroundColor: theme.surfaceSecondary }]}
+                onPress={() => {
+                  setIsEditing(false);
+                  setEditNombre(user?.nombre || '');
+                  setEditEmail(user?.email || '');
+                }}
               >
-                {isGenerating ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                <Text style={[styles.cancelButtonText, { color: theme.textSecondary }]}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.button, styles.saveButton, { backgroundColor: theme.primary }]}
+                onPress={handleSaveProfile}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color={theme.text} />
                 ) : (
-                  <Text style={styles.generateButtonText}>Generar link de invitación</Text>
+                  <Text style={[styles.saveButtonText, { color: theme.text }]}>Guardar</Text>
                 )}
               </Pressable>
-            )}
-          </View>
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={styles.infoRow}>
+              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Nombre</Text>
+              <Text style={[styles.infoValue, { color: theme.text }]}>{user?.nombre || 'No definido'}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Email</Text>
+              <Text style={[styles.infoValue, { color: theme.text }]}>{user?.email || 'No disponible'}</Text>
+            </View>
+            <Pressable style={[styles.editButton, { backgroundColor: theme.primary }]} onPress={() => setIsEditing(true)}>
+              <Text style={[styles.editButtonText, { color: theme.text }]}>Editar perfil</Text>
+            </Pressable>
+          </>
         )}
       </View>
-    </View>
+
+      <View style={[styles.section, { backgroundColor: theme.surface }]}>
+        <Text style={[styles.sectionTitle, { color: theme.primary }]}>Apariencia</Text>
+        <View style={styles.themeToggleRow}>
+          <View style={styles.themeToggleInfo}>
+            <Text style={[styles.themeToggleLabel, { color: theme.text }]}>Modo oscuro</Text>
+            <Text style={[styles.themeToggleDescription, { color: theme.textSecondary }]}>
+              {isDark ? 'Activado' : 'Desactivado'}
+            </Text>
+          </View>
+          <Switch
+            value={isDark}
+            onValueChange={toggleTheme}
+            trackColor={{ false: theme.border, true: theme.primaryLight }}
+            thumbColor={isDark ? theme.primary : '#FFFFFF'}
+          />
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: theme.surface }]}>
+        <Pressable style={[styles.logoutButton, { backgroundColor: theme.error }]} onPress={handleLogout}>
+          <Text style={[styles.logoutButtonText, { color: theme.text }]}>Cerrar sesión</Text>
+        </Pressable>
+      </View>
+
+      <BackupPanel />
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   content: {
-    flex: 1,
     paddingHorizontal: 20,
     paddingTop: 20,
+    paddingBottom: 40,
   },
-  title: {
-    fontSize: 28,
+  avatarSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  avatarContainer: {
+    position: 'relative',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatar: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  avatarPlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarInitials: {
+    color: '#FFFFFF',
+    fontSize: 48,
     fontWeight: 'bold',
-    color: '#FF6B9D',
-    marginBottom: 20,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
+  cameraIcon: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+  },
+  cameraIconText: {
+    fontSize: 18,
+  },
+  avatarHint: {
+    marginTop: 8,
+    fontSize: 12,
+  },
+  section: {
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
@@ -151,93 +274,86 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  label: {
-    fontSize: 14,
-    color: '#666666',
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  infoRow: {
+    marginBottom: 12,
+  },
+  infoLabel: {
+    fontSize: 12,
     marginBottom: 4,
   },
-  value: {
+  infoValue: {
     fontSize: 16,
-    color: '#333333',
-    fontWeight: '500',
   },
-  valueSmall: {
-    fontSize: 12,
-    color: '#333333',
-    fontFamily: 'monospace',
-  },
-  description: {
-    fontSize: 14,
-    color: '#666666',
+  inputGroup: {
     marginBottom: 16,
-    lineHeight: 20,
   },
-  generateButton: {
-    backgroundColor: '#FF6B9D',
+  label: {
+    fontSize: 14,
+    marginBottom: 6,
+  },
+  input: {
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  button: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cancelButton: {},
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  saveButton: {},
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  editButton: {
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  editButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  logoutButton: {
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 8,
   },
-  generateButtonText: {
-    color: '#FFFFFF',
+  logoutButtonText: {
     fontSize: 16,
     fontWeight: '600',
   },
-  inviteContainer: {
+  themeToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
   },
-  inviteToken: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FF6B9D',
-    letterSpacing: 4,
-    marginBottom: 8,
+  themeToggleInfo: {
+    flex: 1,
   },
-  inviteLink: {
-    fontSize: 12,
-    color: '#666666',
-    fontFamily: 'monospace',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  shareButton: {
-    backgroundColor: '#4CAF50',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    marginBottom: 12,
-    width: '100%',
-  },
-  shareButtonText: {
-    color: '#FFFFFF',
+  themeToggleLabel: {
     fontSize: 16,
     fontWeight: '600',
+    marginBottom: 4,
   },
-  newInviteButton: {
-    backgroundColor: 'transparent',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    width: '100%',
-  },
-  newInviteButtonText: {
-    color: '#FF6B9D',
+  themeToggleDescription: {
     fontSize: 14,
-    fontWeight: '500',
-  },
-  leaveButton: {
-    backgroundColor: '#F44336',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  leaveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
   },
 });
