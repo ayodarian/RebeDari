@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
   emptySubtext: { fontSize: 14, marginTop: 5 },
   floatingButton: { position: 'absolute', right: 20, bottom: 85, width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5, zIndex: 10 },
   floatingButtonText: { fontSize: 30, fontWeight: '300' },
-  loadingOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', zIndex: 100 },
+  loadingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 100 },
   loadingText: { marginTop: 10, fontSize: 16 },
   deleteButton: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 12, borderRadius: 15 },
   deleteButtonText: { fontSize: 24 },
