@@ -3,29 +3,25 @@ const { createBaseMod } = require("@expo/config-plugins/build/plugins/createBase
 const fs = require("fs");
 const path = require("path");
 
-const REACT_NATIVE_HOST_BLOCK = `  override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
-    this,
-    object : DefaultReactNativeHost(this) {
-      override fun getPackages(): List<ReactPackage> =
-        PackageList(this).packages.apply {
-          // Packages that cannot be autolinked yet can be added manually here, for example:
-          // add(MyReactNativePackage())
-        }
+const REACT_NATIVE_HOST_BLOCK = `  override val reactNativeHost: ReactNativeHost = object : DefaultReactNativeHost(this) {
+    override fun getPackages(): List<ReactPackage> =
+      PackageList(this).packages.apply {
+        // Packages that cannot be autolinked yet can be added manually here, for example:
+        // add(MyReactNativePackage())
+      }
 
-      override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
+    override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
 
-      override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+    override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
 
-      override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-    }
-  )
+    override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+  }
 
 `;
 
 const REQUIRED_IMPORTS = [
   "import com.facebook.react.ReactNativeHost",
   "import com.facebook.react.defaults.DefaultReactNativeHost",
-  "import expo.modules.ReactNativeHostWrapper",
 ];
 
 const EXPECTED_GRADLE_URL = "https\\://services.gradle.org/distributions/gradle-8.14.3-bin.zip";
