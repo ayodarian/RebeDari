@@ -210,7 +210,7 @@ function VideoListItem({
           {showControls && (
             <View style={styles.playPauseOverlay}>
               <Image 
-                source={require('../../assets/pasue.png')}
+                source={require('../../assets/pause.png')}
                 style={styles.pauseIconImage}
               />
             </View>

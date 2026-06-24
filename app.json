@@ -33,10 +33,7 @@
       "expo-router",
       "expo-secure-store",
       "expo-video",
-      "expo-web-browser",
-      "expo-audio",
-      "expo-notifications",
-      "./plugins/withMainApplicationFix.js"
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
