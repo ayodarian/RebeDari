@@ -1,5 +1,7 @@
 import React from 'react';
 import { Pressable, Text, StyleSheet } from 'react-native';
+import { useThemeStore } from '../../store/useThemeStore';
+import { getColors } from '../../constants/Colors';
 
 export const COLORS = {
   primary: '#FF6B9D',
@@ -7,8 +9,16 @@ export const COLORS = {
 };
 
 export function PrimaryButton({ title, onPress, style }: any) {
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+  const colors = getColors(isDarkMode);
+  const disabled = style?.disabled;
+
   return (
-    <Pressable onPress={onPress} style={[styles.button, style]}>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={[styles.button, style, { backgroundColor: colors.primary, opacity: disabled ? 0.7 : 1 }]}
+    >
       <Text style={styles.text}>{title}</Text>
     </Pressable>
   );
@@ -16,7 +26,6 @@ export function PrimaryButton({ title, onPress, style }: any) {
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: COLORS.primary,
     borderRadius: 12,
     paddingVertical: 15,
     alignItems: 'center',

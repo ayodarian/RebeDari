@@ -7,6 +7,8 @@ import { COLORS } from '../../src/styles/brand';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { useToast } from '../components/Toast';
 import { useAppStore } from '../../store/index';
+import { useThemeStore } from '../../store/useThemeStore';
+import { getColors } from '../../constants/Colors';
 
 const { width } = Dimensions.get('window');
 const TAMANO_CASILLA = (width - 80) / 5;
@@ -42,6 +44,8 @@ const formatDate = (ts: number): string => {
 };
 
 export default function BingoScreen() {
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+  const colors = getColors(isDarkMode);
   const [currentUser, setCurrentUser] = useState<{ uid: string; name: string }>({ uid: 'anonymous', name: 'Anónimo' });
   const currentUid = currentUser.uid;
   const currentName = currentUser.name;
@@ -311,7 +315,7 @@ export default function BingoScreen() {
       >
         <Animated.View style={[
           styles.casilla,
-          !casilla.realizada && styles.casillaNormal,
+          { backgroundColor: colors.surface },
           casilla.realizada && styles.casillaRealizada,
           isHighlighted && styles.casillaHighlighted,
           { transform: [{ scale }] },
@@ -347,16 +351,16 @@ export default function BingoScreen() {
   const filas = chunkArray(casillasFiltradas, 5);
 
   return (
-    <View style={[styles.container, { paddingTop: 5 }]}>
+    <View style={[styles.container, { paddingTop: 5, backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: COLORS.primary }]}>Bingo</Text>
+        <Text style={[styles.title, { color: colors.primary }]}>Bingo</Text>
       </View>
 
       <View style={styles.progressContainer}>
-        <View style={styles.progressBarBackground}>
+        <View style={[styles.progressBarBackground, { backgroundColor: colors.surfaceSecondary }]}>
           <View style={[styles.progressBarFill, { width: `${porcentaje}%` }]} />
         </View>
-        <Text style={styles.progressText}>{porcentaje}% completado</Text>
+        <Text style={[styles.progressText, { color: colors.textSecondary }]}>{porcentaje}% completado</Text>
       </View>
 
       <View style={styles.filtrosContainer}>
@@ -395,7 +399,7 @@ export default function BingoScreen() {
           <Text style={styles.botonTexto}>+ Agregar</Text>
         </Pressable>
         <Pressable
-          style={[styles.botonAccion, styles.botonEliminar, modoEliminar && styles.botonEliminarActivo, cargando && styles.botonAccionDisabled]}
+          style={[styles.botonAccion, styles.botonEliminar, { backgroundColor: colors.surfaceSecondary }, modoEliminar && styles.botonEliminarActivo, cargando && styles.botonAccionDisabled]}
           onPress={() => setModoEliminar(!modoEliminar)}
           disabled={cargando}
         >
@@ -413,22 +417,22 @@ export default function BingoScreen() {
         {cargando ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateIcon}>⏳</Text>
-            <Text style={styles.emptyStateTitle}>Cargando...</Text>
+            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>Cargando...</Text>
           </View>
         ) : casillasFiltradas.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateIcon}>🎯</Text>
-            <Text style={styles.emptyStateTitle}>
+            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
               {casillas.length === 0 ? 'Aún no hay planes' : 'Sin resultados'}
             </Text>
-            <Text style={styles.emptyStateHint}>
+            <Text style={[styles.emptyStateHint, { color: colors.textSecondary }]}>
               {casillas.length === 0
                 ? 'Tocá + Agregar para crear el primer plan'
                 : 'Cambiá el filtro para ver más planes'}
             </Text>
           </View>
         ) : (
-          <View style={styles.tablero}>
+          <View style={[styles.tablero, { backgroundColor: colors.surfaceSecondary }]}>
             {filas.map((fila, i) => (
               <View key={i} style={styles.fila}>
                 {fila.map(casilla => renderCasilla(casilla, indexMap.get(casilla.id) ?? 0))}
@@ -449,7 +453,7 @@ export default function BingoScreen() {
         onRequestClose={cerrarModal}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <Text style={styles.modalTitle}>
               {modoNuevo
                 ? 'Nuevo Plan'
@@ -543,23 +547,23 @@ export default function BingoScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'rgba(255, 245, 248, 0.95)' },
+  container: { flex: 1 },
   header: { paddingTop: 5, paddingBottom: 10, paddingHorizontal: 15 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#FF6B9D' },
+  title: { fontSize: 24, fontWeight: 'bold' },
   botonesContainer: { flexDirection: 'row', paddingHorizontal: 15, marginBottom: 10, gap: 10 },
   botonAccion: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 20, flex: 1, alignItems: 'center' },
   botonAccionDisabled: { opacity: 0.5 },
   botonAgregar: { backgroundColor: '#FFB6C1' },
-  botonEliminar: { backgroundColor: '#F5F5F5' },
+  botonEliminar: {},
   botonEliminarActivo: { backgroundColor: '#FF6B6B' },
   botonTexto: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
   botonTextoActivo: { color: '#FFFFFF' },
   modoEliminarTexto: { textAlign: 'center', color: '#FF6B6B', fontSize: 14, fontWeight: '600', marginBottom: 10 },
   scrollContent: { paddingBottom: 100 },
-  tablero: { backgroundColor: 'rgba(255, 183, 197, 0.25)', borderRadius: 20, padding: 10, marginHorizontal: 15 },
+  tablero: { borderRadius: 20, padding: 10, marginHorizontal: 15 },
   fila: { flexDirection: 'row', justifyContent: 'center' },
-  casilla: { width: TAMANO_CASILLA, height: TAMANO_CASILLA, backgroundColor: '#FFFFFF', borderRadius: 10, alignItems: 'center', justifyContent: 'center', margin: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2, position: 'relative' },
-  casillaNormal: { backgroundColor: '#FFFFFF' },
+  casilla: { width: TAMANO_CASILLA, height: TAMANO_CASILLA, borderRadius: 10, alignItems: 'center', justifyContent: 'center', margin: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2, position: 'relative' },
+  casillaNormal: {},
   casillaRealizada: { backgroundColor: '#E8F5E9' },
   casillaHighlighted: {
     borderWidth: 2.5,
@@ -571,7 +575,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   numeroCasilla: { fontSize: 20, fontWeight: 'bold' },
-  numeroNormal: { color: '#333333' },
+  numeroNormal: {},
   numeroRealizado: { color: '#90EE90' },
   creadorBadge: {
     position: 'absolute',
@@ -594,12 +598,12 @@ const styles = StyleSheet.create({
   palomita: { position: 'absolute', top: 2, right: 2, backgroundColor: 'rgba(144, 238, 144, 0.8)', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   palomitaTexto: { fontSize: 14, fontWeight: 'bold', color: '#228B22' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, width: width - 40, maxHeight: '80%' },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#FF6B9D', marginBottom: 20, textAlign: 'center' },
-  labelInput: { fontSize: 14, fontWeight: '600', color: '#666666', marginBottom: 5, marginTop: 10 },
-  input: { backgroundColor: '#F5F5F5', borderRadius: 10, padding: 12, fontSize: 16, color: '#333333' },
-  inputDisabled: { backgroundColor: '#EEEEEE', color: '#666666' },
-  inputDescripcion: { backgroundColor: '#F5F5F5', borderRadius: 10, padding: 12, fontSize: 16, color: '#333333', minHeight: 80, textAlignVertical: 'top' },
+  modalContent: { borderRadius: 20, padding: 20, width: width - 40, maxHeight: '80%' },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  labelInput: { fontSize: 14, fontWeight: '600', marginBottom: 5, marginTop: 10 },
+  input: { borderRadius: 10, padding: 12, fontSize: 16 },
+  inputDisabled: {},
+  inputDescripcion: { borderRadius: 10, padding: 12, fontSize: 16, minHeight: 80, textAlignVertical: 'top' },
   modalAttribution: {
     marginTop: 16,
     paddingTop: 12,
@@ -609,20 +613,19 @@ const styles = StyleSheet.create({
   },
   attributionText: {
     fontSize: 12,
-    color: '#999999',
     marginVertical: 1,
   },
   modalBotones: { flexDirection: 'row', marginTop: 20, gap: 10 },
   botonModal: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
-  botonEditar: { backgroundColor: '#F5F5F5' },
+  botonEditar: {},
   botonConfirmar: { backgroundColor: '#90EE90' },
-  botonModalTexto: { fontSize: 14, fontWeight: '600', color: '#333333' },
+  botonModalTexto: { fontSize: 14, fontWeight: '600' },
   botonCerrar: { marginTop: 15, paddingVertical: 12, alignItems: 'center' },
   botonCerrarTexto: { fontSize: 14, color: '#FF6B9D', fontWeight: '600' },
   progressContainer: { paddingHorizontal: 15, marginBottom: 12 },
-  progressBarBackground: { height: 10, backgroundColor: '#F5F5F5', borderRadius: 10, overflow: 'hidden' },
+  progressBarBackground: { height: 10, borderRadius: 10, overflow: 'hidden' },
   progressBarFill: { height: 10, backgroundColor: '#FF6B9D' },
-  progressText: { marginTop: 6, fontSize: 12, color: '#666666', textAlign: 'center' },
+  progressText: { marginTop: 6, fontSize: 12, textAlign: 'center' },
 
   filtrosContainer: { flexDirection: 'row', paddingHorizontal: 15, marginBottom: 15, gap: 8 },
   botonFiltro: { flex: 1, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 15, backgroundColor: 'rgba(255, 182, 193, 0.3)', alignItems: 'center' },
@@ -647,13 +650,11 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#666666',
     marginBottom: 8,
     textAlign: 'center',
   },
   emptyStateHint: {
     fontSize: 14,
-    color: '#999999',
     textAlign: 'center',
     lineHeight: 20,
   },

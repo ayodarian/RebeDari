@@ -2,12 +2,16 @@ import { View, Text, StyleSheet, TextInput, Pressable, Alert, KeyboardAvoidingVi
 import { useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAppStore } from '../../store/index';
-import { PrimaryButton, COLORS } from '../../src/styles/brand';
+import { PrimaryButton } from '../../src/styles/brand';
+import { useThemeStore } from '../../store/useThemeStore';
+import { getColors } from '../../constants/Colors';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
   const { email } = useLocalSearchParams<{ email: string }>();
   const { exchangeResetPasswordToken, resetPassword } = useAppStore();
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+  const colors = getColors(isDarkMode);
 
   const [step, setStep] = useState<'code' | 'password'>('code');
   const [code, setCode] = useState('');
@@ -72,66 +76,67 @@ export default function ResetPasswordScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>RebeDari</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, { color: colors.primary }]}>RebeDari</Text>
+        <Text style={[styles.subtitle, { color: colors.text }]}>
           {step === 'code' ? 'Verificar código' : 'Nueva contraseña'}
         </Text>
 
         {step === 'code' ? (
           <View style={styles.form}>
-            <Text style={styles.description}>
+            <Text style={[styles.description, { color: colors.textSecondary }]}>
               Ingresa el código de 6 dígitos que enviamos a{'\n'}
-              <Text style={styles.email}>{email}</Text>
+              <Text style={[styles.email, { color: colors.text }]}>{email}</Text>
             </Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
               placeholder="Código de verificación"
-              placeholderTextColor="#8E8E93"
+              placeholderTextColor={colors.textSecondary}
               value={code}
               onChangeText={setCode}
               keyboardType="number-pad"
               maxLength={6}
               autoFocus
+              textContentType="oneTimeCode"
             />
             {isLoading ? (
-              <Pressable style={[styles.button, styles.buttonDisabled]}>
+              <Pressable style={[styles.button, { backgroundColor: colors.primary }]}>
                 <ActivityIndicator color="#FFFFFF" />
               </Pressable>
             ) : (
               <PrimaryButton title="Verificar código" onPress={handleVerifyCode} />
             )}
             <Pressable onPress={() => router.back()}>
-              <Text style={styles.linkText}>Volver a iniciar sesión</Text>
+              <Text style={[styles.linkText, { color: colors.primary }]}>Volver a iniciar sesión</Text>
             </Pressable>
           </View>
         ) : (
           <View style={styles.form}>
-            <Text style={styles.description}>
+            <Text style={[styles.description, { color: colors.textSecondary }]}>
               Ingresa tu nueva contraseña
             </Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
               placeholder="Nueva contraseña"
-              placeholderTextColor="#8E8E93"
+              placeholderTextColor={colors.textSecondary}
               value={newPassword}
               onChangeText={setNewPassword}
               secureTextEntry
               autoFocus
             />
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
               placeholder="Confirmar contraseña"
-              placeholderTextColor="#8E8E93"
+              placeholderTextColor={colors.textSecondary}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
             />
             {isLoading ? (
-              <Pressable style={[styles.button, styles.buttonDisabled]}>
+              <Pressable style={[styles.button, { backgroundColor: colors.primary }]}>
                 <ActivityIndicator color="#FFFFFF" />
               </Pressable>
             ) : (
@@ -147,7 +152,6 @@ export default function ResetPasswordScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   content: {
     flex: 1,
@@ -157,33 +161,29 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#FF6B9D',
     textAlign: 'center',
     marginBottom: 10,
   },
   subtitle: {
     fontSize: 18,
-    color: '#000000',
     textAlign: 'center',
     marginBottom: 40,
   },
   description: {
     fontSize: 14,
-    color: '#666666',
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 20,
   },
   email: {
     fontWeight: '600',
-    color: '#333333',
   },
   form: {
     width: '100%',
   },
   input: {
-    backgroundColor: '#F5F5F5',
     borderRadius: 12,
+    borderWidth: 1,
     paddingHorizontal: 15,
     paddingVertical: 15,
     fontSize: 16,
@@ -191,17 +191,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   button: {
-    backgroundColor: '#FF6B9D',
     borderRadius: 12,
     paddingVertical: 15,
     alignItems: 'center',
     marginBottom: 15,
   },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
   linkText: {
-    color: '#FF6B9D',
     fontSize: 14,
     textAlign: 'center',
     marginVertical: 10,

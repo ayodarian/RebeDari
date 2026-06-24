@@ -6,6 +6,8 @@ interface UserData {
   id: string;
   email: string;
   nombre: string;
+  avatar_url?: string | null;
+  avatar_path?: string | null;
 }
 
 interface AppState {
@@ -13,13 +15,9 @@ interface AppState {
   isAuthenticated: boolean;
   isLoading: boolean;
   sessionId: string | null;
-  partnerId: string | null;
-  inviteToken: string | null;
   setUser: (user: UserData | null) => void;
   joinSession: () => Promise<void>;
   leaveSession: () => Promise<void>;
-  createInvite: () => Promise<string>;
-  acceptInvite: (token: string) => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
   register: (email: string, password: string, nombre?: string) => Promise<{ requiresVerification: boolean }>;
   logout: () => Promise<void>;
@@ -29,6 +27,8 @@ interface AppState {
   verifyEmail: (email: string, otp: string) => Promise<boolean>;
   signInWithIdToken: (idToken: string) => Promise<boolean>;
   checkAuth: () => Promise<(() => void) | undefined>;
+  updateAvatar: (url: string, path: string) => Promise<void>;
+  updateProfile: (nombre: string) => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -39,8 +39,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   setUser: (user) => set({ user, isAuthenticated: !!user }),
 
   sessionId: null,
-  partnerId: null,
-  inviteToken: null,
 
   joinSession: async () => {
     const user = get().user;
@@ -51,31 +49,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const { data: userData, error: userError } = await client.database
         .from('users')
-        .select('session_id, partner_id')
+        .select('session_id')
         .eq('id', uid)
         .single();
 
       if (!userError && userData?.session_id) {
         set({
           sessionId: userData.session_id,
-          partnerId: userData.partner_id || null,
         });
         return;
-      }
-
-      const { data: pendingInvite, error: inviteError } = await client.database
-        .from('invites')
-        .select('*')
-        .is('used_by', null)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (pendingInvite && pendingInvite.length > 0 && !inviteError) {
-        const invite = pendingInvite[0];
-        if (invite.created_by !== uid) {
-          await get().acceptInvite(invite.token);
-          return;
-        }
       }
 
       const { data: newSession, error: cError } = await client.database
@@ -91,12 +73,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         .from('users')
         .update({
           session_id: joinedSessionId,
-          partner_id: null,
           joined_at: Date.now(),
         })
         .eq('id', uid);
 
-      set({ sessionId: joinedSessionId, partnerId: null });
+      set({ sessionId: joinedSessionId });
     } catch (e) {
       console.error('Error al unir sesion', e);
       throw e;
@@ -133,120 +114,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       console.error('Error leaving session', e);
     } finally {
-      set({ sessionId: null, partnerId: null });
-    }
-  },
-
-  createInvite: async () => {
-    const user = get().user;
-    if (!user) throw new Error('Usuario no autenticado');
-    const client = getClient();
-
-    const token = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-    try {
-      const { data, error } = await client.database
-        .from('invites')
-        .insert({
-          token,
-          created_by: user.id,
-          created_at: Date.now(),
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return token;
-    } catch (e) {
-      console.error('Error creating invite', e);
-      throw e;
-    }
-  },
-
-  acceptInvite: async (token: string) => {
-    const user = get().user;
-    if (!user) throw new Error('Usuario no autenticado');
-    const client = getClient();
-
-    try {
-      const { data: invite, error: inviteError } = await client.database
-        .from('invites')
-        .select('*')
-        .eq('token', token)
-        .is('used_by', null)
-        .single();
-
-      if (inviteError || !invite) {
-        throw new Error('Invitación no válida o ya utilizada');
-      }
-
-      if (invite.created_by === user.id) {
-        throw new Error('No puedes aceptar tu propia invitación');
-      }
-
-      const creatorId = invite.created_by;
-      const partnerId = creatorId;
-
-      const { data: existingSession, error: sessionError } = await client.database
-        .from('sessions')
-        .select('*')
-        .order('created_at', { ascending: true })
-        .limit(1);
-
-      let sessionId: string;
-
-      if (existingSession && existingSession.length > 0) {
-        const session = existingSession[0];
-        const members = (session.members as string[]) || [];
-        if (members.includes(creatorId)) {
-          sessionId = String(session.id);
-          const newMembers = [...members, user.id];
-          await client.database
-            .from('sessions')
-            .update({ members: newMembers, is_open: false })
-            .eq('id', sessionId);
-        } else {
-          throw new Error('La sesión del creador no existe');
-        }
-      } else {
-        const { data: newSession, error: createError } = await client.database
-          .from('sessions')
-          .insert({ members: [creatorId, user.id], is_open: false })
-          .select()
-          .single();
-
-        if (createError) throw createError;
-        sessionId = String(newSession.id);
-      }
-
-      await client.database
-        .from('users')
-        .update({
-          session_id: sessionId,
-          partner_id: partnerId,
-          joined_at: Date.now(),
-        })
-        .eq('id', user.id);
-
-      await client.database
-        .from('users')
-        .update({
-          partner_id: user.id,
-        })
-        .eq('id', creatorId);
-
-      await client.database
-        .from('invites')
-        .update({
-          used_by: user.id,
-          used_at: Date.now(),
-        })
-        .eq('token', token);
-
-      set({ sessionId, partnerId, inviteToken: null });
-    } catch (e) {
-      console.error('Error accepting invite', e);
-      throw e;
+      set({ sessionId: null });
     }
   },
 
@@ -272,8 +140,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         nombre: data.user.profile?.name || email.split('@')[0],
       };
 
-      await tokenStorage.setUserData(userData);
-
       await client.database
         .from('users')
         .upsert({
@@ -282,6 +148,19 @@ export const useAppStore = create<AppState>((set, get) => ({
           nombre: userData.nombre,
           last_login: Date.now(),
         }, { onConflict: 'id' });
+
+      const { data: profileRow } = await client.database
+        .from('users')
+        .select('avatar_url, avatar_path')
+        .eq('id', userData.id)
+        .single();
+
+      if (profileRow) {
+        userData.avatar_url = (profileRow as any).avatar_url || null;
+        userData.avatar_path = (profileRow as any).avatar_path || null;
+      }
+
+      await tokenStorage.setUserData(userData);
 
       set({ user: userData, isAuthenticated: true });
       await get().joinSession();
@@ -349,6 +228,19 @@ export const useAppStore = create<AppState>((set, get) => ({
             nombre: userData.nombre,
             created_at: Date.now(),
           }, { onConflict: 'id' });
+
+        const { data: profileRow } = await client.database
+          .from('users')
+          .select('avatar_url, avatar_path')
+          .eq('id', userData.id)
+          .single();
+
+        if (profileRow) {
+          userData.avatar_url = (profileRow as any).avatar_url || null;
+          userData.avatar_path = (profileRow as any).avatar_path || null;
+        }
+
+        await tokenStorage.setUserData(userData);
       }
 
       set({ user: userData, isAuthenticated: true });
@@ -379,6 +271,36 @@ export const useAppStore = create<AppState>((set, get) => ({
     await tokenStorage.clearAll();
     setAccessToken(null);
     set({ user: null, isAuthenticated: false });
+  },
+
+  updateAvatar: async (url, path) => {
+    const user = get().user;
+    if (!user) throw new Error('Usuario no autenticado');
+    const client = getClient();
+
+    await client.database
+      .from('users')
+      .update({ avatar_url: url, avatar_path: path })
+      .eq('id', user.id);
+
+    const updated = { ...user, avatar_url: url, avatar_path: path };
+    await tokenStorage.setUserData(updated);
+    set({ user: updated });
+  },
+
+  updateProfile: async (nombre) => {
+    const user = get().user;
+    if (!user) throw new Error('Usuario no autenticado');
+    const client = getClient();
+
+    await client.database
+      .from('users')
+      .update({ nombre })
+      .eq('id', user.id);
+
+    const updated = { ...user, nombre };
+    await tokenStorage.setUserData(updated);
+    set({ user: updated });
   },
 
   recoverPassword: async (email: string) => {
@@ -415,8 +337,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       nombre: data.user.profile?.name || email.split('@')[0],
     };
 
-    await tokenStorage.setUserData(userData);
-
     await getClient().database
       .from('users')
       .upsert({
@@ -425,6 +345,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         nombre: userData.nombre,
         created_at: Date.now(),
       }, { onConflict: 'id' });
+
+    const { data: profileRow } = await getClient().database
+      .from('users')
+      .select('avatar_url, avatar_path')
+      .eq('id', userData.id)
+      .single();
+
+    if (profileRow) {
+      userData.avatar_url = (profileRow as any).avatar_url || null;
+      userData.avatar_path = (profileRow as any).avatar_path || null;
+    }
+
+    await tokenStorage.setUserData(userData);
 
     set({ user: userData, isAuthenticated: true });
     await get().joinSession();
@@ -456,7 +389,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         email: data.user?.email || '',
         nombre: data.user?.profile?.name || data.user?.email?.split('@')[0] || 'Usuario',
       };
-      await tokenStorage.setUserData(userData);
 
       await client.database
         .from('users')
@@ -466,6 +398,19 @@ export const useAppStore = create<AppState>((set, get) => ({
           nombre: userData.nombre,
           last_login: Date.now(),
         }, { onConflict: 'id' });
+
+      const { data: profileRow } = await client.database
+        .from('users')
+        .select('avatar_url, avatar_path')
+        .eq('id', userData.id)
+        .single();
+
+      if (profileRow) {
+        userData.avatar_url = (profileRow as any).avatar_url || null;
+        userData.avatar_path = (profileRow as any).avatar_path || null;
+      }
+
+      await tokenStorage.setUserData(userData);
 
       set({ user: userData, isAuthenticated: true });
       await get().joinSession();
@@ -490,6 +435,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.warn('[store] checkAuth error:', e);
       set({ isLoading: false });
     }
-    return undefined;
+
+    const refreshInterval = setInterval(async () => {
+      if (get().isAuthenticated) {
+        try {
+          await restoreSession();
+        } catch (e) {
+          console.warn('[store] auto-refresh failed:', e);
+        }
+      }
+    }, 30 * 60 * 1000);
+
+    return () => clearInterval(refreshInterval);
   },
 }));

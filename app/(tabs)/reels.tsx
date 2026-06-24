@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, Alert, Pressable, TextInput, Modal, Image } from 'react-native';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoPlayer, useVideoPlayer, VideoView } from 'expo-video';
 import Slider from '@react-native-community/slider';
@@ -9,6 +9,8 @@ import insforge from '../../lib/insforge';
 import { uploadFile, deleteFile } from '../../lib/storage';
 import { COLORS } from '../../src/styles/brand';
 import { useAppStore } from '../../store/index';
+import { useThemeStore } from '../../store/useThemeStore';
+import { getColors } from '../../constants/Colors';
 
 const { width, height } = Dimensions.get('window');
 
@@ -20,20 +22,22 @@ interface VideoItem {
   created_at: string;
 }
 
-function VideoListItem({ 
-  item, 
+function VideoListItem({
+  item,
   isVisible,
   optionsId,
   setOptionsId,
   setEditingVideoId,
   setEditingCaption,
-}: { 
-  item: VideoItem; 
+  colors,
+}: {
+  item: VideoItem;
   isVisible: boolean;
   optionsId: number | null;
   setOptionsId: (id: number | null) => void;
   setEditingVideoId: (id: number | null) => void;
   setEditingCaption: (caption: string) => void;
+  colors: ReturnType<typeof getColors>;
 }) {
   const player = useVideoPlayer(item.url);
   
@@ -137,20 +141,20 @@ function VideoListItem({
   };
   
   return (
-    <Pressable style={styles.videoContainer}>
-      <View style={styles.videoHeader}>
+    <Pressable style={[styles.videoContainer, { backgroundColor: colors.surface }]}>
+      <View style={[styles.videoHeader, { backgroundColor: colors.surface }]}>
         <View style={styles.headerLeft}>
-          <View style={styles.avatar} />
+          <View style={[styles.avatar, { backgroundColor: colors.primary }]} />
           <View style={styles.userInfo}>
-            <Text style={styles.username}>RebeDari</Text>
-            <Text style={styles.timeAgo}>{getTimeAgo(item.created_at)}</Text>
+            <Text style={[styles.username, { color: colors.text }]}>RebeDari</Text>
+            <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>{getTimeAgo(item.created_at)}</Text>
           </View>
         </View>
         <TouchableOpacity onPress={() => setOptionsId(optionsId === item.id ? null : item.id)}>
-          <Text style={styles.moreOptions}>⋮</Text>
+          <Text style={[styles.moreOptions, { color: colors.textSecondary }]}>⋮</Text>
         </TouchableOpacity>
         {optionsId === item.id && (
-          <Pressable style={styles.optionsMenuContainer} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={[styles.optionsMenuContainer, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
             <Pressable 
               style={styles.optionButton} 
               onPress={() => {
@@ -159,7 +163,7 @@ function VideoListItem({
                 setEditingCaption(item.caption || 'Recuerdos');
               }}
             >
-              <Text style={styles.optionText}>Editar título</Text>
+              <Text style={[styles.optionText, { color: colors.primary }]}>Editar título</Text>
             </Pressable>
             <Pressable 
               style={styles.optionButton} 
@@ -186,7 +190,7 @@ function VideoListItem({
                 );
               }}
             >
-              <Text style={[styles.optionText, styles.optionDeleteText]}>Eliminar video</Text>
+              <Text style={[styles.optionText, { color: '#FF3B30' }]}>Eliminar video</Text>
             </Pressable>
           </Pressable>
         )}
@@ -212,7 +216,7 @@ function VideoListItem({
             </View>
           )}
           {showSlider && (
-            <View style={styles.videoControls}>
+            <View style={[styles.videoControls, { backgroundColor: colors.surface }]}>
               <Slider
                 style={styles.slider}
 minimumValue={0}
@@ -227,7 +231,7 @@ minimumValue={0}
                 maximumTrackTintColor="#E0E0E0"
                 thumbTintColor="#FF6B9D"
               />
-              <Text style={styles.timeText}>
+              <Text style={[styles.timeText, { color: colors.textSecondary }]}>
                 {formatTime(currentTime)} / {formatTime(duration)}
               </Text>
             </View>
@@ -252,6 +256,8 @@ minimumValue={0}
 
 export default function ReelsScreen() {
   const insets = useSafeAreaInsets();
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+  const colors = getColors(isDarkMode);
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -377,28 +383,29 @@ export default function ReelsScreen() {
   };
 
   const renderVideo = ({ item, index }: { item: VideoItem; index: number }) => (
-    <VideoListItem 
-      item={item} 
+    <VideoListItem
+      item={item}
       isVisible={index === currentIndex}
       optionsId={videoOptionsId === item.id ? videoOptionsId : null}
       setOptionsId={setVideoOptionsId}
       setEditingVideoId={setEditingVideoId}
       setEditingCaption={setEditingCaption}
+      colors={colors}
     />
   );
 
-  const viewabilityConfig = {
+  const viewabilityConfig = useMemo(() => ({
     itemVisiblePercentThreshold: 50,
-  };
+  }), []);
 
-  const handleViewabilityChange = ({ viewableItems }: any) => {
+  const handleViewabilityChange = useCallback(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
       setCurrentIndex(viewableItems[0].index);
     }
-  };
+  }, []);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {uploading && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#FF6B9D" />
@@ -407,7 +414,7 @@ export default function ReelsScreen() {
       )}
       
       <View style={[styles.header, { paddingTop: 5 }]}>
-        <Text style={styles.title}>Reels</Text>
+        <Text style={[styles.title, { color: colors.primary }]}>Reels</Text>
       </View>
       <FlatList
         data={videos}
@@ -422,8 +429,8 @@ export default function ReelsScreen() {
         viewabilityConfig={viewabilityConfig}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Sin videos aún</Text>
-            <Text style={styles.emptySubtext}>Toca + para subir un video</Text>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Sin videos aún</Text>
+            <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Toca + para subir un video</Text>
           </View>
         }
         removeClippedSubviews={true}
@@ -443,10 +450,10 @@ export default function ReelsScreen() {
         onRequestClose={() => setEditingVideoId(null)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setEditingVideoId(null)}>
-          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Editar título</Text>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: colors.primary }]}>Editar título</Text>
             <TextInput
-              style={styles.editCaptionInput}
+              style={[styles.editCaptionInput, { backgroundColor: colors.surfaceSecondary, color: colors.text }]}
               value={editingCaption}
               onChangeText={setEditingCaption}
               placeholder="Título del video"
@@ -483,7 +490,7 @@ export default function ReelsScreen() {
         onRequestClose={closeActionModal}
       >
         <Pressable style={styles.actionModalOverlay} onPress={closeActionModal}>
-          <Pressable style={styles.actionModalCard} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={[styles.actionModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.actionModalTitle}>Agregar contenido</Text>
             <Pressable style={styles.actionButton} onPress={() => handleVideoAction(pickVideo)}>
               <Text style={styles.actionButtonText}>🎬 Subir video</Text>
@@ -492,7 +499,7 @@ export default function ReelsScreen() {
               <Text style={styles.actionButtonText}>🔀 Mezclar contenido</Text>
             </Pressable>
             <Pressable style={styles.actionCancelButton} onPress={closeActionModal}>
-              <Text style={styles.actionCancelText}>Cancelar</Text>
+              <Text style={[styles.actionCancelText, { color: colors.textSecondary }]}>Cancelar</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -504,7 +511,6 @@ export default function ReelsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   header: {
     paddingBottom: 10,
@@ -513,13 +519,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#FF6B9D',
   },
   videoContainer: {
     marginHorizontal: 12,
     marginBottom: 16,
     marginTop: 8,
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -580,11 +584,9 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#8E8E93',
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#8E8E93',
     marginTop: 5,
   },
   floatingButton: {
@@ -611,7 +613,6 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 100,
@@ -619,7 +620,6 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#FF6B9D',
   },
   videoHeader: {
     flexDirection: 'row',
@@ -627,7 +627,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
   },
@@ -640,7 +639,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#FF6B9D',
     marginRight: 10,
   },
   userInfo: {
@@ -649,23 +647,19 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#000000',
   },
   timeAgo: {
     fontSize: 11,
-    color: '#8E8E93',
     marginTop: 1,
   },
   moreOptions: {
     fontSize: 18,
-    color: '#8E8E93',
     paddingHorizontal: 4,
   },
   optionsMenuContainer: {
     position: 'absolute',
     right: 12,
     top: 50,
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     paddingVertical: 8,
     shadowColor: '#000',
@@ -683,11 +677,8 @@ const styles = StyleSheet.create({
   optionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FF6B9D',
   },
-  optionDeleteText: {
-    color: '#FF3B30',
-  },
+  optionDeleteText: {},
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -697,24 +688,20 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: width - 50,
-    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 20,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FF6B9D',
     marginBottom: 15,
     textAlign: 'center',
   },
   editCaptionInput: {
     width: '100%',
-    backgroundColor: '#F5F5F5',
     borderRadius: 12,
     padding: 15,
     fontSize: 16,
-    color: '#333333',
     marginBottom: 20,
   },
   editModalButtons: {
@@ -762,7 +749,6 @@ const styles = StyleSheet.create({
     bottom: 50,
     left: 12,
     right: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -774,7 +760,6 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: 12,
-    color: '#666666',
     textAlign: 'center',
     marginTop: -5,
   },
@@ -798,7 +783,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   actionModalCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     borderBottomLeftRadius: 30,
@@ -809,7 +793,6 @@ const styles = StyleSheet.create({
   actionModalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#FF6B9D',
     textAlign: 'center',
     marginBottom: 20,
   },
@@ -835,6 +818,5 @@ const styles = StyleSheet.create({
   },
   actionCancelText: {
     fontSize: 16,
-    color: '#666666',
   },
 });

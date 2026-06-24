@@ -18,11 +18,15 @@ export function getClient(): InsForgeClient {
 }
 
 export function setAccessToken(token: string | null): void {
-  _client = createClient({
-    baseUrl: insforgeUrl,
-    anonKey: insforgeAnonKey,
-    accessToken: token || undefined,
-  });
+  if (_client) {
+    _client.setAccessToken(token || '');
+  } else {
+    _client = createClient({
+      baseUrl: insforgeUrl,
+      anonKey: insforgeAnonKey,
+      accessToken: token || undefined,
+    });
+  }
 }
 
 export async function restoreSession(): Promise<StoredUser | null> {
@@ -34,25 +38,20 @@ export async function restoreSession(): Promise<StoredUser | null> {
     return null;
   }
 
-  // If no refresh token, we can still try using the access token
+  setAccessToken(accessToken);
+
   if (!refreshToken) {
-    setAccessToken(accessToken);
     return userData;
   }
 
-  setAccessToken(accessToken);
-
-  const { data, error } = await _client.auth.refreshSession({ refreshToken });
-  if (error || !data) {
-    // Refresh failed - clear tokens but keep user data for re-login
-    await tokenStorage.clearAll();
-    setAccessToken(null);
-    return null;
-  }
-
-  if (data.accessToken) {
-    await tokenStorage.setTokens(data.accessToken, data.refreshToken || refreshToken);
-    setAccessToken(data.accessToken);
+  try {
+    const { data, error } = await _client.auth.refreshSession({ refreshToken });
+    if (!error && data?.accessToken) {
+      await tokenStorage.setTokens(data.accessToken, data.refreshToken || refreshToken);
+      setAccessToken(data.accessToken);
+    }
+  } catch (e) {
+    console.warn('[insforge] refresh failed, keeping existing access token:', e);
   }
 
   return userData;

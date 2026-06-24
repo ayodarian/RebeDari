@@ -5,7 +5,9 @@ import Constants from 'expo-constants';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { useAppStore } from '../../store/index';
-import { PrimaryButton, COLORS } from '../../src/styles/brand';
+import { PrimaryButton } from '../../src/styles/brand';
+import { useThemeStore } from '../../store/useThemeStore';
+import { getColors } from '../../constants/Colors';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -17,9 +19,9 @@ function isExpoGo(): boolean {
 
 export default function LoginScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const inviteToken = params.inviteToken as string | undefined;
   const { login, register, recoverPassword, signInWithIdToken } = useAppStore();
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+  const colors = getColors(isDarkMode);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,7 +32,6 @@ export default function LoginScreen() {
 
   const inExpoGo = isExpoGo();
 
-  // Google ID Token request
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: GOOGLE_WEB_CLIENT_ID || undefined,
   });
@@ -48,14 +49,7 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       await signInWithIdToken(idToken);
-      if (inviteToken) {
-        router.replace({
-          pathname: '/(auth)/invite',
-          params: { token: inviteToken },
-        });
-      } else {
-        router.replace('/(tabs)');
-      }
+      router.replace('/(tabs)');
     } catch (error: any) {
       console.error('[Login] Google ID token error:', error);
       Alert.alert('Error', error.message || 'No se pudo iniciar sesión con Google');
@@ -73,14 +67,7 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       await login(email, password);
-      if (inviteToken) {
-        router.replace({
-          pathname: '/(auth)/invite',
-          params: { token: inviteToken },
-        });
-      } else {
-        router.replace('/(tabs)');
-      }
+      router.replace('/(tabs)');
     } catch (error: any) {
       const err = error as any;
       const msg = err?.message || '';
@@ -117,18 +104,11 @@ export default function LoginScreen() {
         console.log('[Register] Navigating to verify-email with email:', email);
         router.push({
           pathname: '/(auth)/verify-email',
-          params: { email, inviteToken: inviteToken || '' },
+          params: { email },
         });
       } else {
         console.log('[Register] No verification needed, navigating to tabs');
-        if (inviteToken) {
-          router.replace({
-            pathname: '/(auth)/invite',
-            params: { token: inviteToken },
-          });
-        } else {
-          router.replace('/(tabs)');
-        }
+        router.replace('/(tabs)');
       }
     } catch (error: any) {
       const err = error as any;
@@ -196,12 +176,12 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>RebeDari</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, { color: colors.primary }]}>RebeDari</Text>
+        <Text style={[styles.subtitle, { color: colors.text }]}>
           {recoveryMode
             ? 'Recupera tu cuenta'
             : isRegistering
@@ -212,78 +192,85 @@ export default function LoginScreen() {
         {recoveryMode ? (
           <View style={styles.form}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
               placeholder="Email de recuperación"
-              placeholderTextColor="#8E8E93"
+              placeholderTextColor={colors.textSecondary}
               value={recoveryEmail}
               onChangeText={setRecoveryEmail}
               keyboardType="email-address"
               autoCapitalize="none"
             />
             {isLoading ? (
-              <Pressable style={[styles.button, styles.buttonDisabled]}>
+              <Pressable style={[styles.button, { backgroundColor: colors.primary }]}>
                 <ActivityIndicator color="#FFFFFF" />
               </Pressable>
             ) : (
               <PrimaryButton title="Enviar código" onPress={handleRecovery} />
             )}
             <Pressable onPress={() => setRecoveryMode(false)}>
-              <Text style={styles.linkText}>Volver a iniciar sesión</Text>
+              <Text style={[styles.linkText, { color: colors.primary }]}>Volver a iniciar sesión</Text>
             </Pressable>
           </View>
         ) : (
           <View style={styles.form}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
               placeholder="Email"
-              placeholderTextColor="#8E8E93"
+              placeholderTextColor={colors.textSecondary}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
               keyboardType="email-address"
             />
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
               placeholder="Contraseña"
-              placeholderTextColor="#8E8E93"
+              placeholderTextColor={colors.textSecondary}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
             />
             {isLoading ? (
-              <Pressable style={[styles.button, styles.buttonDisabled]}>
+              <Pressable style={[styles.button, { backgroundColor: colors.primary }]}>
                 <ActivityIndicator color="#FFFFFF" />
               </Pressable>
             ) : (
               <PrimaryButton title={isRegistering ? 'Crear cuenta' : 'Entrar'} onPress={isRegistering ? handleRegister : handleLogin} />
             )}
             <Pressable onPress={() => setRecoveryMode(true)}>
-              <Text style={styles.linkText}>¿Olvidaste tu contraseña?</Text>
-            </Pressable>
-            <Pressable onPress={() => setIsRegistering(!isRegistering)}>
-              <Text style={styles.linkText}>
-                {isRegistering
-                  ? '¿Ya tienes cuenta? Entrar'
-                  : 'Crear nueva cuenta'}
-              </Text>
+              <Text style={[styles.linkText, { color: colors.primary }]}>¿Olvidaste tu contraseña?</Text>
             </Pressable>
 
             {showGoogleButton && (
               <>
                 <View style={styles.dividerContainer}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>o continúa con</Text>
-                  <View style={styles.dividerLine} />
+                  <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                  <Text style={[styles.dividerText, { color: colors.textSecondary }]}>o continúa con</Text>
+                  <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
                 </View>
 
-                <Pressable style={styles.oauthButton} onPress={handleGoogleLogin}>
-                  <Text style={styles.oauthButtonText}>G   Google</Text>
+                <Pressable
+                  style={[styles.oauthButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={handleGoogleLogin}
+                >
+                  <Text style={[styles.oauthButtonText, { color: colors.text }]}>G   Google</Text>
                 </Pressable>
               </>
             )}
           </View>
         )}
       </View>
+
+      {!recoveryMode && (
+        <Pressable
+          onPress={() => setIsRegistering(!isRegistering)}
+          style={styles.bottomButton}
+        >
+          <Text style={[styles.linkText, { color: colors.primary }]}>
+            {isRegistering ? '¿Ya tienes cuenta? Entrar' : 'Crear nueva cuenta'}
+          </Text>
+        </Pressable>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -291,7 +278,6 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   content: {
     flex: 1,
@@ -301,13 +287,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#FF6B9D',
     textAlign: 'center',
     marginBottom: 10,
   },
   subtitle: {
     fontSize: 18,
-    color: '#000000',
     textAlign: 'center',
     marginBottom: 40,
   },
@@ -315,25 +299,20 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   input: {
-    backgroundColor: '#F5F5F5',
     borderRadius: 12,
+    borderWidth: 1,
     paddingHorizontal: 15,
     paddingVertical: 15,
     fontSize: 16,
     marginBottom: 15,
   },
   button: {
-    backgroundColor: '#FF6B9D',
     borderRadius: 12,
     paddingVertical: 15,
     alignItems: 'center',
     marginBottom: 15,
   },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
   linkText: {
-    color: '#FF6B9D',
     fontSize: 14,
     textAlign: 'center',
     marginVertical: 10,
@@ -346,25 +325,25 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#E5E5EA',
   },
   dividerText: {
-    color: '#8E8E93',
     fontSize: 13,
     marginHorizontal: 12,
   },
   oauthButton: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
   },
   oauthButtonText: {
-    color: '#000000',
     fontSize: 16,
     fontWeight: '500',
+  },
+  bottomButton: {
+    paddingVertical: 16,
+    paddingBottom: 32,
+    alignItems: 'center',
   },
 });

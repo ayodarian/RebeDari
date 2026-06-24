@@ -9,6 +9,8 @@ import * as Sharing from 'expo-sharing';
 import insforge from '../../lib/insforge';
 import { uploadFile, deleteFile } from '../../lib/storage';
 import { useAppStore } from '../../store/index';
+import { useThemeStore } from '../../store/useThemeStore';
+import { getColors } from '../../constants/Colors';
 
 
 
@@ -27,6 +29,8 @@ interface Carta {
 }
 
 export default function CartasScreen() {
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+  const colors = getColors(isDarkMode);
   const [pestanaActiva, setPestanaActiva] = useState<'Lebebe' | 'Darian'>('Lebebe');
   const [cartas, setCartas] = useState<Carta[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -209,15 +213,15 @@ export default function CartasScreen() {
       overshootRight={false}
     >
       <TouchableOpacity
-        style={styles.tarjeta}
+        style={[styles.tarjeta, { backgroundColor: colors.surface }]}
         onPress={() => abrirCarta(carta)}
       >
-        <View style={styles.tarjetaIcono}>
+        <View style={[styles.tarjetaIcono, { backgroundColor: colors.surfaceSecondary }]}>
           <Text style={styles.tarjetaIconText}>💌</Text>
         </View>
         <View style={styles.tarjetaContent}>
-          <Text style={styles.tarjetaTitulo}>{carta.titulo}</Text>
-          <Text style={styles.tarjetaSubtitulo}>
+          <Text style={[styles.tarjetaTitulo, { color: colors.text }]}>{carta.titulo}</Text>
+          <Text style={[styles.tarjetaSubtitulo, { color: colors.textSecondary }]}>
             De {carta.remitente} • {carta.fecha_escritura || carta.fecha}
           </Text>
         </View>
@@ -231,7 +235,7 @@ export default function CartasScreen() {
             <Text style={styles.moreOptions}>⋮</Text>
           </TouchableOpacity>
           {cartaOptionsId === carta.id && (
-            <Pressable style={styles.optionsMenuContainer} onPress={(e) => e.stopPropagation()}>
+            <Pressable style={[styles.optionsMenuContainer, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
               <Pressable
                 style={styles.optionButton}
                 onPress={() => {
@@ -240,7 +244,7 @@ export default function CartasScreen() {
                   setEditingTitulo(carta.titulo);
                 }}
               >
-                <Text style={styles.optionText}>Editar título</Text>
+                <Text style={[styles.optionText, { color: colors.primary }]}>Editar título</Text>
               </Pressable>
               <Pressable
                 style={styles.optionButton}
@@ -249,7 +253,7 @@ export default function CartasScreen() {
                   eliminarCarta(carta);
                 }}
               >
-                <Text style={[styles.optionText, styles.optionDeleteText]}>Eliminar</Text>
+                <Text style={[styles.optionText, { color: '#FF3B30' }]}>Eliminar</Text>
               </Pressable>
             </Pressable>
           )}
@@ -261,33 +265,33 @@ export default function CartasScreen() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {uploading && (
-        <View style={styles.loadingOverlay}>
+        <View style={[styles.loadingOverlay, { backgroundColor: isDarkMode ? 'rgba(18,18,20,0.92)' : 'rgba(255,255,255,0.92)' }]}>
           <ActivityIndicator size="large" color="#FF6B9D" />
-          <Text style={styles.loadingText}>Subiendo carta...</Text>
+          <Text style={[styles.loadingText, { color: colors.primary }]}>Subiendo carta...</Text>
         </View>
       )}
 
       <View style={[styles.header, { paddingTop: 5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
-        <Text style={styles.title}>Cartas</Text>
+        <Text style={[styles.title, { color: colors.primary }]}>Cartas</Text>
         <View style={styles.filterContainer}>
-          <TouchableOpacity style={styles.filterButton} onPress={() => setShowDropdown(!showDropdown)}>
-            <Text style={styles.filterButtonText}>≡ {filterMode === 'recientes' ? 'Recientes' : filterMode === 'fecha' ? 'Fecha' : filterMode === 'favoritas' ? 'Favoritas' : 'Aleatorias'}</Text>
+          <TouchableOpacity style={[styles.filterButton, { backgroundColor: colors.surface, borderColor: colors.primary }]} onPress={() => setShowDropdown(!showDropdown)}>
+            <Text style={[styles.filterButtonText, { color: colors.primary }]}>≡ {filterMode === 'recientes' ? 'Recientes' : filterMode === 'fecha' ? 'Fecha' : filterMode === 'favoritas' ? 'Favoritas' : 'Aleatorias'}</Text>
           </TouchableOpacity>
           {showDropdown && (
-            <View style={styles.filterDropdown}>
+            <View style={[styles.filterDropdown, { backgroundColor: colors.surface }]}>
               <TouchableOpacity style={styles.filterOption} onPress={() => { setFilterMode('recientes'); setShowDropdown(false); }}>
-                <Text style={styles.filterOptionText}>Recientes</Text>
+                <Text style={[styles.filterOptionText, { color: colors.text }]}>Recientes</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.filterOption} onPress={() => { setFilterMode('fecha'); setShowDropdown(false); }}>
-                <Text style={styles.filterOptionText}>Fecha de escritura</Text>
+                <Text style={[styles.filterOptionText, { color: colors.text }]}>Fecha de escritura</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.filterOption} onPress={() => { setFilterMode('favoritas'); setShowDropdown(false); }}>
-                <Text style={styles.filterOptionText}>Favoritas</Text>
+                <Text style={[styles.filterOptionText, { color: colors.text }]}>Favoritas</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.filterOption} onPress={() => { setFilterMode('aleatorias'); setShowDropdown(false); }}>
-                <Text style={styles.filterOptionText}>Aleatorias</Text>
+                <Text style={[styles.filterOptionText, { color: colors.text }]}>Aleatorias</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -295,22 +299,38 @@ export default function CartasScreen() {
       </View>
 
       <View style={styles.pestanasContainer}>
-        <Pressable
-          style={[styles.pestana, pestanaActiva === 'Lebebe' && styles.pestanaActivaLebebe]}
+        <TouchableOpacity
+          style={[
+            styles.pestana,
+            { backgroundColor: pestanaActiva === 'Lebebe' ? colors.primary : colors.surfaceSecondary },
+            pestanaActiva === 'Lebebe' && styles.pestanaActivaLebebe,
+          ]}
           onPress={() => setPestanaActiva('Lebebe')}
         >
-          <Text style={[styles.pestanaTexto, pestanaActiva === 'Lebebe' && styles.pestanaTextoActivo]}>
-            Lebebe
+          <Text style={[
+            styles.pestanaTexto,
+            { color: pestanaActiva === 'Lebebe' ? '#FFFFFF' : colors.textSecondary },
+            pestanaActiva === 'Lebebe' && styles.pestanaTextoActivo,
+          ]}>
+            Lebebe 💕
           </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.pestana, pestanaActiva === 'Darian' && styles.pestanaActivaDarian]}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.pestana,
+            { backgroundColor: pestanaActiva === 'Darian' ? colors.primary : colors.surfaceSecondary },
+            pestanaActiva === 'Darian' && styles.pestanaActivaDarian,
+          ]}
           onPress={() => setPestanaActiva('Darian')}
         >
-          <Text style={[styles.pestanaTexto, pestanaActiva === 'Darian' && styles.pestanaTextoActivo]}>
-            Darianzin
+          <Text style={[
+            styles.pestanaTexto,
+            { color: pestanaActiva === 'Darian' ? '#FFFFFF' : colors.textSecondary },
+            pestanaActiva === 'Darian' && styles.pestanaTextoActivo,
+          ]}>
+            Darianzín 🖤
           </Text>
-        </Pressable>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -340,7 +360,7 @@ export default function CartasScreen() {
         onRequestClose={() => setFechaModalOpen(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setFechaModalOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Nueva Carta</Text>
             <Text style={styles.modalSubtitle}>Título de la carta</Text>
             <TextInput
@@ -387,7 +407,7 @@ export default function CartasScreen() {
         onRequestClose={() => setEditingCartaId(null)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setEditingCartaId(null)}>
-          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Editar título</Text>
             <TextInput
               style={styles.fechaInput}
@@ -499,7 +519,6 @@ export default function CartasScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   header: {
     paddingBottom: 10,
@@ -508,7 +527,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#FF6B9D',
   },
   pestanasContainer: {
     flexDirection: 'row',
@@ -520,21 +538,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 20,
-    backgroundColor: '#F5F5F5',
   },
-  pestanaActivaLebebe: {
-    backgroundColor: '#FFB6C1',
-  },
-  pestanaActivaDarian: {
-    backgroundColor: '#98FB98',
-  },
+  pestanaActivaLebebe: {},
+  pestanaActivaDarian: {},
   pestanaTexto: {
     fontSize: 14,
-    color: '#666666',
     fontWeight: '500',
   },
   pestanaTextoActivo: {
-    color: '#333333',
     fontWeight: '600',
   },
   lista: {
@@ -547,7 +558,6 @@ const styles = StyleSheet.create({
   tarjeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
     borderRadius: 15,
     padding: 15,
     marginBottom: 12,
@@ -575,11 +585,9 @@ const styles = StyleSheet.create({
   tarjetaTitulo: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333333',
   },
   tarjetaSubtitulo: {
     fontSize: 12,
-    color: '#8E8E93',
     marginTop: 2,
   },
   emptyContainer: {
@@ -634,7 +642,6 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 100,
@@ -642,7 +649,6 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#FF6B9D',
   },
   deleteButton: {
     backgroundColor: '#FF4444',
@@ -660,15 +666,12 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
   filterButton: {
-    backgroundColor: '#FFFFFF',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FF6B9D',
   },
   filterButtonText: {
-    color: '#FF6B9D',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -676,7 +679,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 40,
     right: 0,
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingVertical: 8,
     shadowColor: '#000',
@@ -692,7 +694,6 @@ const styles = StyleSheet.create({
   },
   filterOptionText: {
     fontSize: 14,
-    color: '#333333',
   },
   starButton: {
     padding: 8,
@@ -719,7 +720,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 40,
     top: 10,
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     paddingVertical: 8,
     shadowColor: '#000',
@@ -737,11 +737,8 @@ const styles = StyleSheet.create({
   optionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FF6B9D',
   },
-  optionDeleteText: {
-    color: '#FF3B30',
-  },
+  optionDeleteText: {},
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -751,7 +748,6 @@ const styles = StyleSheet.create({
   },
   previewModalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 15,
@@ -759,7 +755,6 @@ const styles = StyleSheet.create({
   previewCard: {
     width: '100%',
     height: '95%',
-    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -772,9 +767,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 15,
-    backgroundColor: '#FFF5F8',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 107, 157, 0.1)',
   },
   previewHeaderTop: {
     flexDirection: 'row',
@@ -786,7 +779,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: 'rgba(255, 107, 157, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -797,41 +789,33 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255, 107, 157, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeButtonCardText: {
     fontSize: 18,
-    color: '#FF6B9D',
     fontWeight: 'bold',
   },
   previewTitleCard: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#333333',
     marginBottom: 8,
     lineHeight: 28,
   },
   previewFechaCard: {
     fontSize: 14,
-    color: '#FF6B9D',
     fontWeight: '500',
   },
   pdfContainerCard: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
   },
   pdfViewCard: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
   },
   previewFooterCard: {
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 107, 157, 0.1)',
   },
   previewDescripcionCard: {
     maxHeight: 100,
@@ -839,45 +823,37 @@ const styles = StyleSheet.create({
   },
   previewDescripcionTextCard: {
     fontSize: 14,
-    color: '#666666',
     lineHeight: 20,
   },
   abrirButtonCard: {
-    backgroundColor: '#FF6B9D',
     borderRadius: 25,
     paddingVertical: 14,
     alignItems: 'center',
   },
   abrirButtonTextCard: {
-    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
   },
   modalCard: {
     width: '85%',
-    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 20,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FF6B9D',
     marginBottom: 8,
     textAlign: 'center',
   },
   modalSubtitle: {
     fontSize: 14,
-    color: '#666666',
     marginBottom: 15,
     textAlign: 'center',
   },
   fechaInput: {
-    backgroundColor: '#F5F5F5',
     borderRadius: 12,
     padding: 15,
     fontSize: 16,
-    color: '#333333',
     marginBottom: 20,
   },
   modalButtons: {

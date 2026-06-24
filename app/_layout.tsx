@@ -4,9 +4,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'expo-router';
+import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { useAppStore } from '../store/index';
+import { useThemeStore } from '../store/useThemeStore';
+import { themeColors } from '../constants/Colors';
 import { ToastProvider } from './components/Toast';
-import * as Linking from 'expo-linking';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -16,67 +18,65 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const checkAuth = useAppStore((s) => s.checkAuth);
 
   useEffect(() => {
-    checkAuth();
+    const cleanup = checkAuth() as unknown as (() => void) | undefined;
+    return () => {
+      if (typeof cleanup === 'function') cleanup();
+    };
   }, []);
 
   useEffect(() => {
     if (isLoading) return;
-    
-    const tabRoutes = ['/bingo', '/cartas', '/dedos', '/reels', '/perfil'];
-    if (!isAuthenticated && tabRoutes.includes(pathname)) {
+
+    const tabRoutes = ['/bingo', '/cartas', '/dedos', '/reels', '/perfil', '/(tabs)'];
+    const inProtected = tabRoutes.some((r) => pathname === r || pathname.startsWith(r + '/'));
+    if (!isAuthenticated && inProtected) {
       router.replace('/(auth)');
     }
   }, [isAuthenticated, isLoading, pathname]);
-
-  useEffect(() => {
-    const handleDeepLink = (event: { url: string }) => {
-      const { url } = event;
-      const parsed = Linking.parse(url);
-
-      if (parsed.path === 'invite' && parsed.queryParams?.token) {
-        const token = parsed.queryParams.token as string;
-        if (isAuthenticated) {
-          router.push({
-            pathname: '/(auth)/invite',
-            params: { token },
-          });
-        } else {
-          router.replace({
-            pathname: '/(auth)',
-            params: { inviteToken: token },
-          });
-        }
-      }
-    };
-
-    const subscription = Linking.addEventListener('url', handleDeepLink);
-
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleDeepLink({ url });
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [isAuthenticated]);
 
   return <>{children}</>;
 }
 
 export default function RootLayout() {
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+
+  const CustomDarkTheme = {
+    ...DarkTheme,
+    colors: {
+      ...DarkTheme.colors,
+      background: themeColors.dark.background,
+      card: themeColors.dark.background,
+      text: themeColors.dark.text,
+      border: themeColors.dark.border,
+      primary: themeColors.dark.primary,
+    },
+  };
+
+  const CustomLightTheme = {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      background: themeColors.light.background,
+      card: themeColors.light.background,
+      text: themeColors.light.text,
+      border: themeColors.light.border,
+      primary: themeColors.light.primary,
+    },
+  };
+
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <ToastProvider>
-        <AuthGuard>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="(auth)" />
-          </Stack>
-        </AuthGuard>
-      </ToastProvider>
-    </SafeAreaProvider>
+    <ThemeProvider value={isDarkMode ? CustomDarkTheme : CustomLightTheme}>
+      <SafeAreaProvider>
+        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+        <ToastProvider>
+          <AuthGuard>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: isDarkMode ? themeColors.dark.background : themeColors.light.background } }}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="(auth)" />
+            </Stack>
+          </AuthGuard>
+        </ToastProvider>
+      </SafeAreaProvider>
+    </ThemeProvider>
   );
 }

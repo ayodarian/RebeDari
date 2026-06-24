@@ -1,124 +1,75 @@
-import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator } from 'react-native';
-import { useState } from 'react';
-import * as Sharing from 'expo-sharing';
+import { View, Text, StyleSheet, Switch, Image, Pressable, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAppStore } from '../../store/index';
-import { PrimaryButton } from '../../src/styles/brand';
+import { useThemeStore } from '../../store/useThemeStore';
+import { getColors } from '../../constants/Colors';
 
 export default function ProfileScreen() {
-  const { user, partnerId, sessionId, createInvite, leaveSession } = useAppStore();
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const router = useRouter();
+  const { user, sessionId, logout } = useAppStore();
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
+  const colors = getColors(isDarkMode);
 
-  const handleGenerateInvite = async () => {
-    setIsGenerating(true);
-    try {
-      const token = await createInvite();
-      setInviteToken(token);
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo generar la invitación');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleShareInvite = async () => {
-    if (!inviteToken) return;
-    const link = `rebedari://invite/${inviteToken}`;
-    try {
-      await Sharing.shareAsync(link);
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo compartir el link');
-    }
-  };
-
-  const handleLeaveSession = async () => {
-    Alert.alert(
-      'Desvincular pareja',
-      '¿Estás seguro? Esto eliminará la conexión con tu pareja.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Desvincular',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await leaveSession();
-              setInviteToken(null);
-              Alert.alert('Listo', 'Te has desvinculado de tu pareja');
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'No se pudo desvincular');
-            }
-          },
-        },
-      ]
-    );
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/(auth)');
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.content}>
-        <Text style={styles.title}>Mi Perfil</Text>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>Mi email</Text>
-          <Text style={styles.value}>{user?.email || 'No disponible'}</Text>
+        <View style={styles.profileHeader}>
+          {user?.avatar_url ? (
+            <Image source={{ uri: user.avatar_url }} style={[styles.profileAvatar, { borderColor: colors.primary }]} />
+          ) : (
+            <View style={[styles.profileAvatar, styles.profileAvatarPlaceholder, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
+              <Text style={[styles.profileAvatarIcon, { color: colors.primary }]}>👤</Text>
+            </View>
+          )}
+          <Pressable onPress={() => router.push('/(tabs)/perfil/editar' as any)} hitSlop={8} style={styles.editButton}>
+            <Text style={[styles.editButtonText, { color: colors.primary }]}>Editar Perfil</Text>
+          </Pressable>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.label}>Mi ID</Text>
-          <Text style={styles.valueSmall}>{user?.id || 'No disponible'}</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Nombre</Text>
+          <Text style={[styles.value, { color: colors.text }]}>{user?.nombre || 'Sin nombre'}</Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.label}>Sesión</Text>
-          <Text style={styles.value}>{sessionId || 'Sin sesión'}</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Mi email</Text>
+          <Text style={[styles.value, { color: colors.text }]}>{user?.email || 'No disponible'}</Text>
         </View>
 
-        {partnerId ? (
-          <View style={styles.card}>
-            <Text style={styles.label}>Pareja vinculada</Text>
-            <Text style={styles.value}>{partnerId}</Text>
-            <Pressable style={styles.leaveButton} onPress={handleLeaveSession}>
-              <Text style={styles.leaveButtonText}>Desvincular pareja</Text>
-            </Pressable>
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Mi ID</Text>
+          <Text style={[styles.valueSmall, { color: colors.text }]}>{user?.id || 'No disponible'}</Text>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Sesión</Text>
+          <Text style={[styles.value, { color: colors.text }]}>{sessionId || 'Sin sesión'}</Text>
+        </View>
+
+        <View style={[styles.card, styles.themeCard, { backgroundColor: colors.surface }]}>
+          <View style={styles.themeRow}>
+            <View style={styles.themeLabelContainer}>
+              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 2 }]}>Apariencia</Text>
+              <Text style={[styles.value, { color: colors.text }]}>Modo Oscuro</Text>
+            </View>
+            <Switch
+              value={isDarkMode}
+              onValueChange={toggleTheme}
+              trackColor={{ false: '#E5E5EA', true: colors.primary }}
+              thumbColor={isDarkMode ? '#FFFFFF' : '#F4F3F4'}
+            />
           </View>
-        ) : (
-          <View style={styles.card}>
-            <Text style={styles.label}>Vincular pareja</Text>
-            <Text style={styles.description}>
-              Genera un link de invitación y compártelo con tu pareja para vincular sus cuentas.
-            </Text>
+        </View>
 
-            {inviteToken ? (
-              <View style={styles.inviteContainer}>
-                <Text style={styles.inviteToken}>{inviteToken}</Text>
-                <Text style={styles.inviteLink}>rebedari://invite/{inviteToken}</Text>
-                <Pressable style={styles.shareButton} onPress={handleShareInvite}>
-                  <Text style={styles.shareButtonText}>Compartir link</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.newInviteButton}
-                  onPress={handleGenerateInvite}
-                  disabled={isGenerating}
-                >
-                  <Text style={styles.newInviteButtonText}>Generar nuevo link</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <Pressable
-                style={styles.generateButton}
-                onPress={handleGenerateInvite}
-                disabled={isGenerating}
-              >
-                {isGenerating ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.generateButtonText}>Generar link de invitación</Text>
-                )}
-              </Pressable>
-            )}
-          </View>
-        )}
+        <Pressable onPress={handleLogout} style={[styles.logoutButton, { borderColor: colors.primary }]}>
+          <Text style={[styles.logoutButtonText, { color: colors.primary }]}>Cerrar Sesión</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -127,117 +78,80 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   content: {
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 20,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FF6B9D',
+  profileHeader: {
+    alignItems: 'center',
     marginBottom: 20,
   },
+  profileAvatar: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2,
+  },
+  profileAvatarPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarIcon: {
+    fontSize: 40,
+  },
+  editButton: {
+    marginTop: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  editButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   card: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   label: {
     fontSize: 14,
-    color: '#666666',
     marginBottom: 4,
   },
   value: {
     fontSize: 16,
-    color: '#333333',
     fontWeight: '500',
   },
   valueSmall: {
     fontSize: 12,
-    color: '#333333',
     fontFamily: 'monospace',
   },
-  description: {
-    fontSize: 14,
-    color: '#666666',
-    marginBottom: 16,
-    lineHeight: 20,
-  },
-  generateButton: {
-    backgroundColor: '#FF6B9D',
-    borderRadius: 12,
+  themeCard: {
     paddingVertical: 14,
+  },
+  themeRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    justifyContent: 'space-between',
   },
-  generateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+  themeLabelContainer: {
+    flex: 1,
   },
-  inviteContainer: {
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  inviteToken: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FF6B9D',
-    letterSpacing: 4,
-    marginBottom: 8,
-  },
-  inviteLink: {
-    fontSize: 12,
-    color: '#666666',
-    fontFamily: 'monospace',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  shareButton: {
-    backgroundColor: '#4CAF50',
+  logoutButton: {
+    marginTop: 20,
+    paddingVertical: 14,
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    borderWidth: 1.5,
     alignItems: 'center',
-    marginBottom: 12,
-    width: '100%',
   },
-  shareButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  newInviteButton: {
-    backgroundColor: 'transparent',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    width: '100%',
-  },
-  newInviteButtonText: {
-    color: '#FF6B9D',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  leaveButton: {
-    backgroundColor: '#F44336',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  leaveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  logoutButtonText: {
+    fontSize: 15,
     fontWeight: '600',
   },
 });

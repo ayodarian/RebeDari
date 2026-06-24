@@ -2,9 +2,11 @@ import { View, Text, StyleSheet, FlatList, Pressable, ScrollView, Modal, Alert, 
 import { useState, useEffect, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import insforge from '../../lib/insforge';
+import insforge, { restoreSession } from '../../lib/insforge';
 import { uploadFile, deleteFile } from '../../lib/storage';
 import { useAppStore } from '../../store/index';
+import { useThemeStore } from '../../store/useThemeStore';
+import { getColors } from '../../constants/Colors';
 
 const { width } = Dimensions.get('window');
 
@@ -139,6 +141,8 @@ const getMensajeAleatorio = (categoria: string): string => {
 export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+  const colors = getColors(isDarkMode);
   const PAGE_SIZE = 20;
 
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -165,28 +169,46 @@ export default function FeedScreen() {
   const [lastId, setLastId] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadFirstPage = async () => {
+    try {
+      setLoadError(null);
+      const doQuery = () => insforge.database
+        .from('fotos')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
+
+      let { data: photosData, error: queryError } = await doQuery();
+
+      if (queryError) {
+        console.warn('[feed] query error, attempting token refresh:', queryError);
+        try { await restoreSession(); } catch (e) { console.warn('[feed] refresh failed:', e); }
+        const retry = await doQuery();
+        photosData = retry.data;
+        queryError = retry.error;
+      }
+
+      if (queryError) {
+        console.error('[feed] query error after retry:', queryError);
+        setLoadError(queryError.message || 'Error al cargar fotos');
+      }
+      if (photosData) {
+        setPhotos(photosData as Photo[]);
+        if (photosData.length > 0) {
+          setLastId(photosData[photosData.length - 1].id);
+        }
+        setHasMore(photosData.length === PAGE_SIZE);
+      }
+    } catch (e) {
+      console.error('[feed] Error cargando fotos', e);
+      setLoadError(e instanceof Error ? e.message : 'Error desconocido');
+    }
+  };
 
   useEffect(() => {
     if (!isAuthenticated) return;
-
-    const loadFirstPage = async () => {
-      try {
-        const { data: photosData } = await insforge.database
-          .from('fotos')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(PAGE_SIZE);
-        if (photosData) {
-          setPhotos(photosData as Photo[]);
-          if (photosData.length > 0) {
-            setLastId(photosData[photosData.length - 1].id);
-          }
-          setHasMore(photosData.length === PAGE_SIZE);
-        }
-      } catch (e) {
-        console.error('[feed] Error cargando fotos', e);
-      }
-    };
 
     loadFirstPage();
 
@@ -403,8 +425,8 @@ export default function FeedScreen() {
   };
 
   const CardButton = ({ title, onPress }: { title: string; onPress: () => void }) => (
-    <Pressable style={styles.cardButton} onPress={onPress}>
-      <Text style={styles.cardButtonText}>{title}</Text>
+    <Pressable style={[styles.cardButton, { backgroundColor: colors.surface }]} onPress={onPress}>
+      <Text style={[styles.cardButtonText, { color: colors.text }]}>{title}</Text>
     </Pressable>
   );
 
@@ -625,14 +647,12 @@ export default function FeedScreen() {
     };
 
     return (
-      <Pressable style={styles.photoContainer}>
+      <Pressable style={[styles.photoContainer, { backgroundColor: colors.surface }]}>
         <View style={styles.photoHeader}>
-          <View style={styles.headerLeft}>
-            <View style={styles.avatar} />
-            <View style={styles.userInfo}>
-              <Text style={styles.username}>RebeDari</Text>
-              <Text style={styles.timeAgo}>{getTimeAgo(item.created_at)}</Text>
-            </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={[styles.avatar, { backgroundColor: colors.primary }]} />
+            <Text style={[styles.username, { color: colors.text }]}>RebeDari</Text>
+            <Text style={styles.timeAgo}>{getTimeAgo(item.created_at)}</Text>
           </View>
           <TouchableOpacity onPress={() => setPhotoOptionsId(photoOptionsId === item.id ? null : item.id)}>
             <Text style={styles.moreOptions}>⋮</Text>
@@ -687,25 +707,25 @@ export default function FeedScreen() {
         ) : (
           <View style={styles.photoPlaceholder}>
             <Text style={styles.placeholderText}>📷</Text>
-            <Text style={styles.placeholderSubtext}>Tu foto aquí</Text>
+            <Text style={[styles.placeholderSubtext, { color: colors.textSecondary }]}>Tu foto aquí</Text>
           </View>
         )}
         <View style={styles.photoFooter}>
-          <Text style={styles.caption}>{item.caption || 'Fotos de ustedes'}</Text>
+          <Text style={[styles.caption, { color: colors.textSecondary }]}>{item.caption || 'Fotos de ustedes'}</Text>
         </View>
       </Pressable>
     );
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {uploading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#FF6B9D" />
-          <Text style={styles.loadingText}>Subiendo foto...</Text>
+        <View style={[styles.loadingOverlay, { backgroundColor: isDarkMode ? 'rgba(18,10,12,0.92)' : 'rgba(255,255,255,0.92)' }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>Subiendo foto...</Text>
         </View>
       )}
-      
+
       <View style={styles.buttonRow}>
         <CardButton title="2 años..." onPress={() => openModal('capsula')} />
         <CardButton title="2. Ábrelo cuando..." onPress={() => openModal('abrlo')} />
@@ -720,6 +740,27 @@ export default function FeedScreen() {
         contentContainerStyle={styles.feedContent}
         onScrollBeginDrag={() => setPhotoOptionsId(null)}
         onEndReached={loadMore}
+        ListEmptyComponent={
+          loadError ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>⚠️</Text>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>Error de conexión</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{loadError}</Text>
+              <Pressable style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={() => {
+                setLoadError(null);
+                loadFirstPage();
+              }}>
+                <Text style={styles.retryButtonText}>Reintentar</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>📷</Text>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>Sin fotos aún</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Toca el botón + para subir tu primera foto</Text>
+            </View>
+          )
+        }
         onEndReachedThreshold={0.4}
         initialNumToRender={10}
         windowSize={11}
@@ -843,7 +884,6 @@ export default function FeedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(255, 245, 248, 0.95)',
   },
   header: {
     paddingBottom: 15,
@@ -852,7 +892,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FF6B9D',
   },
   timeContainer: {
     marginTop: 8,
@@ -860,10 +899,9 @@ const styles = StyleSheet.create({
   timeCounter: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333333',
     lineHeight: 22,
   },
-buttonRow: {
+  buttonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 3,
@@ -874,7 +912,6 @@ buttonRow: {
     minHeight: 42,
     paddingVertical: 6,
     paddingHorizontal: 8,
-    backgroundColor: '#FFFFFF',
     borderRadius: 15,
     borderWidth: 1,
     borderColor: 'rgba(255, 107, 157, 0.3)',
@@ -884,7 +921,6 @@ buttonRow: {
   cardButtonText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#333333',
     textAlign: 'center',
   },
   feedContent: {
@@ -898,7 +934,6 @@ buttonRow: {
     marginHorizontal: 12,
     marginBottom: 16,
     marginTop: 8,
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -918,13 +953,11 @@ buttonRow: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#FF6B9D',
     marginRight: 10,
   },
   username: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#000000',
   },
   photoPlaceholder: {
     width: '100%',
@@ -939,8 +972,38 @@ buttonRow: {
   },
   placeholderSubtext: {
     fontSize: 14,
-    color: '#8E8E93',
     marginTop: 10,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 30,
+  },
+  emptyIcon: {
+    fontSize: 50,
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  retryButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
   photoFooter: {
     paddingHorizontal: 15,
@@ -1401,7 +1464,6 @@ buttonRow: {
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 100,
