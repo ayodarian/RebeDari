@@ -11,7 +11,6 @@ export interface StoredUser {
   id: string;
   email: string;
   nombre: string;
-  avatarUrl?: string | null;
 }
 
 const isWeb = Platform.OS === 'web';

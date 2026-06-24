@@ -1,14 +1,6 @@
 import { create } from 'zustand';
-import {
-  getClient,
-  setAccessToken,
-  setRefreshToken,
-  clearSessionState,
-  restoreSession,
-  isUnauthorizedError,
-  withAuthRetry,
-} from '../lib/insforge';
-import { tokenStorage } from '../lib/token-storage';
+import insforge, { getClient, setAccessToken, restoreSession } from '../lib/insforge';
+import { tokenStorage, StoredUser } from '../lib/token-storage';
 
 interface UserData {
   id: string;
@@ -22,7 +14,6 @@ interface AppState {
   user: UserData | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  initError: string | null;
   sessionId: string | null;
   setUser: (user: UserData | null) => void;
   joinSession: () => Promise<void>;
@@ -44,11 +35,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
-  initError: null,
-  sessionId: null,
-  partnerId: null,
-  partner: null,
-  inviteToken: null,
 
   setUser: (user) => set({ user, isAuthenticated: !!user }),
 
@@ -57,8 +43,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   joinSession: async () => {
     const user = get().user;
     if (!user) throw new Error('Usuario no autenticado');
-    const client = getClient();
     const uid = user.id;
+    const client = getClient();
 
     try {
       const { data: userData, error: userError } = await client.database
@@ -93,7 +79,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       set({ sessionId: joinedSessionId });
     } catch (e) {
-      console.error('[store] joinSession error:', e);
+      console.error('Error al unir sesion', e);
       throw e;
     }
   },
@@ -105,39 +91,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     const client = getClient();
 
     try {
-      const { data: session, error: fetchErr } = await withAuthRetry(() =>
-        client.database.from('sessions').select('*').eq('id', sessionId).single()
-      );
-      if (fetchErr || !session) {
-        set({ sessionId: null, partnerId: null, partner: null });
-        return;
-      }
+      const { data: session } = await client.database
+        .from('sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+
+      if (!session) return;
 
       const members = (session.members as string[]) || [];
-      const remaining = members.filter((m) => m !== user.id);
+      const remaining = members.filter((m: string) => m !== user.id);
 
       if (remaining.length === 0) {
-        await withAuthRetry(() => client.database.from('sessions').delete().eq('id', sessionId));
+        await client.database.from('sessions').delete().eq('id', sessionId);
       } else {
         const isOpen = remaining.length < 2;
-        await withAuthRetry(() =>
-          client
-            .database
-            .from('sessions')
-            .update({ members: remaining, is_open: isOpen })
-            .eq('id', sessionId)
-        );
+        await client.database
+          .from('sessions')
+          .update({ members: remaining, is_open: isOpen })
+          .eq('id', sessionId);
       }
-
-      await withAuthRetry(() =>
-        client
-          .database
-          .from('users')
-          .update({ session_id: null, partner_id: null })
-          .eq('id', user.id)
-      );
     } catch (e) {
-      console.error('[store] leaveSession error:', e);
+      console.error('Error leaving session', e);
     } finally {
       set({ sessionId: null });
     }
@@ -148,31 +123,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const { data, error } = await client.auth.signInWithPassword({ email, password });
       if (error) {
-        const err = error as { statusCode?: number; status?: number; error?: string; code?: string; message?: string };
-        const statusCode = err.statusCode ?? err.status;
-        const errCode = err.error || err.code || '';
-        const msg = err.message || '';
-        if (statusCode === 401 || errCode.includes('INVALID') || msg.toLowerCase().includes('invalid')) {
-          throw new Error('Credenciales inválidas');
-        }
-        if (statusCode === 404 || errCode.includes('NOT_FOUND') || msg.toLowerCase().includes('not found')) {
-          throw new Error('Usuario no encontrado');
-        }
-        throw new Error(msg || 'Error al iniciar sesión');
+        const err = error as any;
+        console.error('[Login] Error:', err.message, 'code:', err.error, 'status:', err.statusCode);
+        throw error;
       }
       if (!data) throw new Error('No se pudo iniciar sesion');
 
       if (data.accessToken) {
         await tokenStorage.setTokens(data.accessToken, data.refreshToken || '');
         setAccessToken(data.accessToken);
-        setRefreshToken(data.refreshToken || null);
       }
 
       const userData: UserData = {
         id: data.user.id,
         email: data.user.email || email,
         nombre: data.user.profile?.name || email.split('@')[0],
-        avatarUrl: null,
       };
 
       await client.database
@@ -198,14 +163,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       await tokenStorage.setUserData(userData);
 
       set({ user: userData, isAuthenticated: true });
-      try {
-        await get().joinSession();
-      } catch (joinErr) {
-        console.warn('[store] login: joinSession failed, continuing:', joinErr);
-      }
+      await get().joinSession();
       return true;
-    } catch (error) {
-      throw error;
+    } catch (error: any) {
+      const err = error as any;
+      const statusCode = err?.statusCode || err?.status;
+      const errCode = err?.error || err?.code || '';
+      const msg = err?.message || '';
+
+      console.error('[Login] Full error:', { statusCode, errCode, msg });
+
+      if (statusCode === 401 || errCode.includes('INVALID') || msg.includes('invalid') || msg.includes('Invalid')) {
+        throw new Error('Credenciales inválidas');
+      }
+      if (statusCode === 404 || errCode.includes('NOT_FOUND') || msg.includes('not found')) {
+        throw new Error('Usuario no encontrado');
+      }
+      throw new Error(msg || 'Error al iniciar sesión');
     }
   },
 
@@ -218,33 +192,31 @@ export const useAppStore = create<AppState>((set, get) => ({
         name: nombre || email.split('@')[0],
       });
       if (error) {
-        const err = error as { statusCode?: number; status?: number; error?: string; code?: string; message?: string };
-        const statusCode = err.statusCode ?? err.status;
-        const errCode = err.error || err.code || '';
-        const msg = err.message || '';
-        if (statusCode === 409 || errCode.includes('ALREADY') || msg.toLowerCase().includes('already')) {
-          throw new Error('YaExiste');
-        }
-        throw new Error(msg || 'Error al registrar');
+        const err = error as any;
+        console.error('[Register] Error:', err.message, 'code:', err.error, 'status:', err.statusCode);
+        throw error;
       }
       if (!data) throw new Error('No se pudo registrar');
 
+      console.log('[Register] Response data:', JSON.stringify(data, null, 2));
+      console.log('[Register] requireEmailVerification:', data.requireEmailVerification);
+
       if (data.requireEmailVerification) {
+        console.log('[Register] Requires verification, returning true');
         return { requiresVerification: true };
       }
 
       if (data.accessToken) {
         await tokenStorage.setTokens(data.accessToken, data.refreshToken || '');
         setAccessToken(data.accessToken);
-        setRefreshToken(data.refreshToken || null);
       }
 
       const userData: UserData = {
         id: data.user?.id || '',
         email: data.user?.email || email,
         nombre: nombre || email.split('@')[0],
-        avatarUrl: null,
       };
+
       await tokenStorage.setUserData(userData);
 
       if (userData.id) {
@@ -272,14 +244,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       set({ user: userData, isAuthenticated: true });
-      try {
-        await get().joinSession();
-      } catch (joinErr) {
-        console.warn('[store] register: joinSession failed, continuing:', joinErr);
-      }
+      await get().joinSession();
+      console.log('[Register] No verification required, returning false');
       return { requiresVerification: false };
-    } catch (error) {
-      throw error;
+    } catch (error: any) {
+      const err = error as any;
+      const statusCode = err?.statusCode || err?.status;
+      const errCode = err?.error || err?.code || '';
+      const msg = err?.message || '';
+
+      console.error('[Register] Full error:', { statusCode, errCode, msg });
+
+      if (statusCode === 409 || errCode.includes('ALREADY') || msg.includes('already') || msg.includes('Already')) {
+        throw new Error('YaExiste');
+      }
+      throw new Error(msg || 'Error al registrar');
     }
   },
 
@@ -287,25 +266,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await getClient().auth.signOut();
     } catch (e) {
-      console.warn('[store] logout signOut error (ignoring):', e);
-    }
-    try {
-      const realtime = getClient().realtime;
-      await realtime.unsubscribe('chat');
-      await realtime.unsubscribe('typing');
-      await realtime.unsubscribe('notifications');
-    } catch {
-      /* noop */
+      console.warn('Logout error (ignoring):', e);
     }
     await tokenStorage.clearAll();
-    clearSessionState();
-    set({
-      user: null,
-      isAuthenticated: false,
-      sessionId: null,
-      partnerId: null,
-      partner: null,
-    });
+    setAccessToken(null);
+    set({ user: null, isAuthenticated: false });
   },
 
   updateAvatar: async (url, path) => {
@@ -364,14 +329,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (data.accessToken) {
       await tokenStorage.setTokens(data.accessToken, data.refreshToken || '');
       setAccessToken(data.accessToken);
-      setRefreshToken(data.refreshToken || null);
     }
 
     const userData: UserData = {
       id: data.user.id,
       email: data.user.email || email,
       nombre: data.user.profile?.name || email.split('@')[0],
-      avatarUrl: null,
     };
 
     await getClient().database
@@ -397,51 +360,44 @@ export const useAppStore = create<AppState>((set, get) => ({
     await tokenStorage.setUserData(userData);
 
     set({ user: userData, isAuthenticated: true });
-    try {
-      await get().joinSession();
-    } catch (joinErr) {
-      console.warn('[store] verifyEmail: joinSession failed, continuing:', joinErr);
-    }
+    await get().joinSession();
     return true;
   },
 
   signInWithIdToken: async (idToken: string) => {
     const client = getClient();
     try {
+      console.log('[Auth] Intentando login con ID token de Google...');
       const { data, error } = await client.auth.signInWithIdToken({
         provider: 'google',
         token: idToken,
       });
-      if (error) throw error;
+
+      if (error) {
+        console.error('[Auth] Error con ID token:', error.message);
+        throw error;
+      }
       if (!data) throw new Error('No se pudo autenticar');
 
       if (data.accessToken) {
         await tokenStorage.setTokens(data.accessToken, data.refreshToken || '');
         setAccessToken(data.accessToken);
-        setRefreshToken(data.refreshToken || null);
       }
 
       const userData: UserData = {
         id: data.user?.id || '',
         email: data.user?.email || '',
         nombre: data.user?.profile?.name || data.user?.email?.split('@')[0] || 'Usuario',
-        avatarUrl: null,
       };
 
-      await withAuthRetry(() =>
-        client
-          .database
-          .from('users')
-          .upsert(
-            {
-              id: userData.id,
-              email: userData.email,
-              nombre: userData.nombre,
-              last_login: Date.now(),
-            },
-            { onConflict: 'id' }
-          )
-      );
+      await client.database
+        .from('users')
+        .upsert({
+          id: userData.id,
+          email: userData.email,
+          nombre: userData.nombre,
+          last_login: Date.now(),
+        }, { onConflict: 'id' });
 
       const { data: profileRow } = await client.database
         .from('users')
@@ -457,14 +413,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       await tokenStorage.setUserData(userData);
 
       set({ user: userData, isAuthenticated: true });
-      try {
-        await get().joinSession();
-      } catch (joinErr) {
-        console.warn('[store] google: joinSession failed, continuing:', joinErr);
-      }
+      await get().joinSession();
+      console.log('[Auth] Login con Google exitoso:', userData.email);
       return true;
     } catch (error: any) {
-      throw new Error(error?.message || 'Error al autenticar con Google');
+      console.error('[Auth] Error:', error.message);
+      throw new Error(error.message || 'Error al autenticar con Google');
     }
   },
 
@@ -472,34 +426,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const userData = await restoreSession();
       if (userData) {
-        set({ user: userData, isAuthenticated: true, isLoading: false, initError: null });
-        try {
-          await get().joinSession();
-        } catch (joinErr) {
-          console.warn('[store] checkAuth: joinSession failed, continuing:', joinErr);
-        }
+        set({ user: userData, isAuthenticated: true, isLoading: false });
+        await get().joinSession();
       } else {
-        set({ isLoading: false, initError: null });
+        set({ isLoading: false });
       }
-    } catch (e: any) {
+    } catch (e) {
       console.warn('[store] checkAuth error:', e);
-      if (isUnauthorizedError(e)) {
-        await tokenStorage.clearAll();
-        clearSessionState();
-        set({
-          user: null,
-          isAuthenticated: false,
-          isLoading: false,
-          sessionId: null,
-          partnerId: null,
-          partner: null,
-        });
-      } else {
-        set({
-          isLoading: false,
-          initError: e?.message || 'No se pudo restaurar la sesión',
-        });
-      }
+      set({ isLoading: false });
     }
 
     const refreshInterval = setInterval(async () => {

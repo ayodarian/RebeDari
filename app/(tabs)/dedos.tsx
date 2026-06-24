@@ -26,9 +26,11 @@ export default function DedosScreen() {
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
   const colors = getColors(isDarkMode);
   
+  // Estado global: juego activo e historial
   const [activeGame, setActiveGame] = useState<GameType>('ruleta');
   const [history, setHistory] = useState<HistoryItem[]>([]);
   
+  // === JUEGO 1: RULETA DE DECISIONES ===
   const [ruletaTexto, setRuletaTexto] = useState('¿Quién gana?');
   const [isSpinning, setIsSpinning] = useState(false);
   const ruletaIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -53,41 +55,70 @@ export default function DedosScreen() {
       setIsSpinning(false);
       
       const now = new Date();
-      const dateStr = now.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const dateStr = now.toLocaleString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
       
-      const newItem: HistoryItem = { game: 'Ruleta', result: winner, date: dateStr };
+      const newItem: HistoryItem = {
+        game: 'Ruleta',
+        result: winner,
+        date: dateStr
+      };
       setHistory([newItem, ...history].slice(0, 10));
     }, 3000);
   };
   
+  // === JUEGO 2: PIEDRA, PAPEL, TIJERA (CIEGO) ===
   const [eleccionDarian, setEleccionDarian] = useState<Choice>(null);
   const [eleccionLebebe, setEleccionLebebe] = useState<Choice>(null);
   const [faseJuego, setFaseJuego] = useState<'seleccion' | 'revelacion'>('seleccion');
   const [pptGanador, setPptGanador] = useState<string | null>(null);
   
   const seleccionar = (jugador: 'darian' | 'lebebe', choice: Choice) => {
-    if (jugador === 'darian') setEleccionDarian(choice);
-    else setEleccionLebebe(choice);
+    if (jugador === 'darian') {
+      setEleccionDarian(choice);
+    } else {
+      setEleccionLebebe(choice);
+    }
   };
   
   const revelarGanador = () => {
     if (!eleccionDarian || !eleccionLebebe) return;
     
     let winner = '';
-    if (eleccionDarian === eleccionLebebe) winner = 'Empate';
-    else if (
+    
+    // Reglas clásico: Piedra vence Tijera, Tijera vence Papel, Papel vence Piedra
+    if (eleccionDarian === eleccionLebebe) {
+      winner = 'Empate';
+    } else if (
       (eleccionDarian === 'piedra' && eleccionLebebe === 'tijera') ||
       (eleccionDarian === 'tijera' && eleccionLebebe === 'papel') ||
       (eleccionDarian === 'papel' && eleccionLebebe === 'piedra')
-    ) winner = 'Gana Dariancin';
-    else winner = 'Gana Lebebe';
+    ) {
+      winner = 'Gana Dariancin';
+    } else {
+      winner = 'Gana Lebebe';
+    }
     
     setPptGanador(`${EMOJIS[eleccionDarian as Exclude<Choice, null>]} vs ${EMOJIS[eleccionLebebe as Exclude<Choice, null>]} - ¡${winner}!`);
     setFaseJuego('revelacion');
     
     const now = new Date();
-    const dateStr = now.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    const newItem: HistoryItem = { game: 'PPT', result: winner, date: dateStr };
+    const dateStr = now.toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    const newItem: HistoryItem = {
+      game: 'PPT',
+      result: winner,
+      date: dateStr
+    };
     setHistory([newItem, ...history].slice(0, 10));
   };
   
@@ -97,6 +128,8 @@ export default function DedosScreen() {
     setFaseJuego('seleccion');
     setPptGanador(null);
   };
+  
+  // === COMPONENTES UI ===
   
   const TabButton = ({ label, game }: { label: string; game: GameType }) => (
     <Pressable
@@ -140,6 +173,8 @@ export default function DedosScreen() {
     </View>
   );
   
+  // === RENDERIZADO ===
+  
   const renderRuleta = () => (
     <View style={styles.gameContainer}>
       <View style={[styles.ruletaBox, { backgroundColor: colors.surface }]}>
@@ -147,11 +182,11 @@ export default function DedosScreen() {
       </View>
       
       <Pressable
-        style={[styles.girarButton, { backgroundColor: theme.primary }, isSpinning && styles.girarButtonDisabled]}
+        style={[styles.girarButton, isSpinning && styles.girarButtonDisabled]}
         onPress={spinRuleta}
         disabled={isSpinning}
       >
-        <Text style={[styles.girarButtonText, { color: theme.text }]}>
+        <Text style={styles.girarButtonText}>
           {isSpinning ? 'Girando...' : '🎰 Girar'}
         </Text>
       </Pressable>
@@ -165,6 +200,7 @@ export default function DedosScreen() {
       return (
         <View style={styles.gameContainer}>
           <View style={styles.pptContainer}>
+            {/* Columna Dariancin */}
             <View style={styles.pptColumn}>
               <Text style={[styles.pptLabel, { color: colors.text }]}>Dariancin</Text>
               {eleccionDarian ? (
@@ -174,14 +210,19 @@ export default function DedosScreen() {
               ) : (
                 <View style={styles.optionsRow}>
                   {OPTIONS.map((opt) => (
-                    <OptionButton key={opt} emoji={EMOJIS[opt]} onPress={() => seleccionar('darian', opt)} />
+                    <OptionButton
+                      key={opt}
+                      emoji={EMOJIS[opt]}
+                      onPress={() => seleccionar('darian', opt)}
+                    />
                   ))}
                 </View>
               )}
             </View>
             
-            <Text style={[styles.pptVS, { color: theme.textTertiary }]}>VS</Text>
+            <Text style={styles.pptVS}>VS</Text>
             
+            {/* Columna Lebebe */}
             <View style={styles.pptColumn}>
               <Text style={[styles.pptLabel, { color: colors.text }]}>Lebebe</Text>
               {eleccionLebebe ? (
@@ -191,7 +232,11 @@ export default function DedosScreen() {
               ) : (
                 <View style={styles.optionsRow}>
                   {OPTIONS.map((opt) => (
-                    <OptionButton key={opt} emoji={EMOJIS[opt]} onPress={() => seleccionar('lebebe', opt)} />
+                    <OptionButton
+                      key={opt}
+                      emoji={EMOJIS[opt]}
+                      onPress={() => seleccionar('lebebe', opt)}
+                    />
                   ))}
                 </View>
               )}
@@ -199,11 +244,11 @@ export default function DedosScreen() {
           </View>
           
           <Pressable
-            style={[styles.revelarButton, { backgroundColor: theme.primary }, !ambosListos && styles.revelarButtonDisabled]}
+            style={[styles.revelarButton, !ambosListos && styles.revelarButtonDisabled]}
             onPress={revelarGanador}
             disabled={!ambosListos}
           >
-            <Text style={[styles.revelarButtonText, { color: theme.text }]}>
+            <Text style={styles.revelarButtonText}>
               {ambosListos ? '🎯 Revelar Ganador' : 'Esperando...'}
             </Text>
           </Pressable>
@@ -211,18 +256,21 @@ export default function DedosScreen() {
       );
     }
     
+    // Fase revelación
     return (
       <View style={styles.gameContainer}>
         <View style={[styles.resultadoBox, { backgroundColor: colors.surface }]}>
           <Text style={styles.resultadoTexto}>{pptGanador}</Text>
         </View>
         
-        <Pressable style={[styles.jugarDeNuevoButton, { backgroundColor: theme.primary }]} onPress={reiniciarPPT}>
-          <Text style={[styles.jugarDeNuevoText, { color: theme.text }]}>🔄 Jugar de nuevo</Text>
+        <Pressable style={styles.jugarDeNuevoButton} onPress={reiniciarPPT}>
+          <Text style={styles.jugarDeNuevoText}>🔄 Jugar de nuevo</Text>
         </Pressable>
       </View>
     );
   };
+  
+  // === MAIN RENDER ===
   
   return (
     <View style={[styles.container, { paddingTop: 5, backgroundColor: colors.background }]}>
@@ -230,14 +278,17 @@ export default function DedosScreen() {
         <Text style={[styles.title, { color: colors.primary }]}>Dedos</Text>
       </View>
       
+      {/* Tabs para cambiar juego */}
       <View style={styles.tabsContainer}>
         <TabButton label="Ruleta" game="ruleta" />
         <TabButton label="Piedra, Papel, Tijera" game="ppt" />
       </View>
       
+      {/* Juego activo */}
       <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
         {activeGame === 'ruleta' ? renderRuleta() : renderPPT()}
         
+        {/* Historial */}
         <View style={styles.historySection}>
           <Text style={[styles.historyTitle, { color: colors.text }]}>Historial</Text>
           <View style={[styles.historyList, { backgroundColor: colors.surface }]}>

@@ -97,29 +97,6 @@ function GlobalHeader() {
             </View>
           )}
         </TouchableOpacity>
-        <NotificationBell
-          trigger={
-            partner && partner.avatarUrl ? (
-              <TouchableOpacity onPress={handlePartnerPress} style={styles.partnerButton}>
-                <Image source={{ uri: partner.avatarUrl }} style={styles.partnerImage} />
-              </TouchableOpacity>
-            ) : partner ? (
-              <TouchableOpacity onPress={handlePartnerPress} style={styles.partnerButton}>
-                <View style={[styles.partnerInitials, { backgroundColor: theme.headerCapsule }]}>
-                  <Text style={[styles.partnerInitialsText, { color: theme.primaryDesaturated }]}>
-                    {partner.nombre ? getInitials(partner.nombre) : '?'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity onPress={handlePartnerPress} style={styles.partnerButton}>
-                <View style={[styles.partnerInitials, { backgroundColor: theme.headerCapsule }]}>
-                  <Image source={require('../../assets/icon-message-default.png')} style={[styles.chatIcon, { tintColor: theme.primaryDesaturated }]} />
-                </View>
-              </TouchableOpacity>
-            )
-          }
-        />
       </View>
     </View>
   );

@@ -10,18 +10,12 @@ import { useThemeStore } from '../store/useThemeStore';
 import { themeColors } from '../constants/Colors';
 import { ToastProvider } from './components/Toast';
 
-const AUTH_ROUTES = ['/(auth)', '/(auth)/invite', '/(auth)/verify-email', '/(auth)/reset-password'];
-
-function isAuthRoute(pathname: string | null): boolean {
-  if (!pathname) return false;
-  return AUTH_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
-}
-
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
   const isLoading = useAppStore((s) => s.isLoading);
+  const checkAuth = useAppStore((s) => s.checkAuth);
 
   useEffect(() => {
     const cleanup = checkAuth() as unknown as (() => void) | undefined;
@@ -38,14 +32,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated && inProtected) {
       router.replace('/(auth)');
     }
-  }, [isAuthenticated, isLoading, pathname, router]);
+  }, [isAuthenticated, isLoading, pathname]);
 
   return <>{children}</>;
-}
-
-function StatusBarHandler() {
-  const { isDark } = useTheme();
-  return <StatusBar style={isDark ? 'light' : 'dark'} />;
 }
 
 export default function RootLayout() {
