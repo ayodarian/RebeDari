@@ -5,7 +5,9 @@ const insforgeUrl = process.env.EXPO_PUBLIC_INSFORGE_URL || '';
 const insforgeAnonKey = process.env.EXPO_PUBLIC_INSFORGE_ANON_KEY || '';
 
 if (!insforgeUrl || !insforgeAnonKey) {
-  console.warn('[insforge] Variables de entorno faltantes. Define EXPO_PUBLIC_INSFORGE_URL y EXPO_PUBLIC_INSFORGE_ANON_KEY');
+  console.warn(
+    '[insforge] Variables de entorno faltantes. Define EXPO_PUBLIC_INSFORGE_URL y EXPO_PUBLIC_INSFORGE_ANON_KEY'
+  );
 }
 
 let _client: InsForgeClient = createClient({
@@ -13,8 +15,16 @@ let _client: InsForgeClient = createClient({
   anonKey: insforgeAnonKey,
 });
 
+let _accessToken: string | null = null;
+let _refreshToken: string | null = null;
+let _refreshPromise: Promise<{ accessToken: string; refreshToken: string } | null> | null = null;
+
 export function getClient(): InsForgeClient {
   return _client;
+}
+
+export function getAccessToken(): string | null {
+  return _accessToken;
 }
 
 export function setAccessToken(token: string | null): void {
@@ -35,6 +45,9 @@ export async function restoreSession(): Promise<StoredUser | null> {
   const userData = await tokenStorage.getUserData();
 
   if (!accessToken || !userData) {
+    await tokenStorage.clearAll();
+    setAccessToken(null);
+    setRefreshToken(null);
     return null;
   }
 
@@ -57,4 +70,27 @@ export async function restoreSession(): Promise<StoredUser | null> {
   return userData;
 }
 
-export default _client;
+export function clearSessionState(): void {
+  setAccessToken(null);
+  setRefreshToken(null);
+}
+
+const insforge = {
+  get database() {
+    return getClient().database;
+  },
+  get auth() {
+    return getClient().auth;
+  },
+  get storage() {
+    return getClient().storage;
+  },
+  get functions() {
+    return getClient().functions;
+  },
+  get realtime() {
+    return getClient().realtime;
+  },
+};
+
+export default insforge;

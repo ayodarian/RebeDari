@@ -1,32 +1,18 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity, ActivityIndicator, Alert, Linking, TextInput, Modal, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
-
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useState, useEffect } from 'react';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as DocumentPicker from 'expo-document-picker';
-import * as Sharing from 'expo-sharing';
-import insforge from '../../lib/insforge';
+import { getClient } from '../../lib/insforge';
 import { uploadFile, deleteFile } from '../../lib/storage';
 import { useAppStore } from '../../store/index';
 import { useThemeStore } from '../../store/useThemeStore';
 import { getColors } from '../../constants/Colors';
 
+const { width } = Dimensions.get('window');
 
-
-interface Carta {
-  id: number;
-  titulo: string;
-  url: string;
-  path: string;
-  remitente: string;
-  fecha: string;
-  fecha_escritura?: string;
-  description: string;
-  favorita?: boolean;
-  tipo?: 'pdf' | 'imagen';
-  created_at: string;
-}
+interface Carta { id: number; titulo: string; url: string; path: string; remitente: string; fecha: string; fecha_escritura?: string; description: string; favorita?: boolean; tipo?: 'pdf' | 'imagen'; created_at: string; }
 
 export default function CartasScreen() {
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
@@ -47,57 +33,38 @@ export default function CartasScreen() {
   const [previewCarta, setPreviewCarta] = useState<Carta | null>(null);
 
   useEffect(() => {
+    const sessionId = useAppStore.getState().sessionId;
+    if (!sessionId) return;
     const loadCartas = async () => {
       try {
-        const { data } = await insforge.database
-          .from('cartas')
-          .select('*')
-          .eq('remitente', pestanaActiva)
-          .order('created_at', { ascending: false });
-
+        const { data } = await getClient().database.from('cartas').select('*').eq('remitente', pestanaActiva).order('created_at', { ascending: false });
         if (data) {
           let cartasData = data as Carta[];
-          // Apply client-side filters
           switch (filterMode) {
-            case 'recientes':
-              break;
-            case 'fecha':
-              cartasData.sort((a, b) => {
-                const fechaA = a.fecha_escritura ? new Date(a.fecha_escritura).getTime() : 0;
-                const fechaB = b.fecha_escritura ? new Date(b.fecha_escritura).getTime() : 0;
-                return fechaB - fechaA;
-              });
-              break;
-            case 'favoritas':
-              cartasData = cartasData.filter(c => c.favorita);
-              break;
-            case 'aleatorias':
-              cartasData.sort(() => Math.random() - 0.5);
-              break;
+            case 'recientes': break;
+            case 'fecha': cartasData.sort((a, b) => (a.fecha_escritura ? new Date(a.fecha_escritura).getTime() : 0) - (b.fecha_escritura ? new Date(b.fecha_escritura).getTime() : 0)); break;
+            case 'favoritas': cartasData = cartasData.filter(c => c.favorita); break;
+            case 'aleatorias': cartasData.sort(() => Math.random() - 0.5); break;
           }
           setCartas(cartasData);
         }
-      } catch (e) {
-        console.error('Error cargando cartas', e);
-      }
+      } catch (e) { console.error('Error cargando cartas', e); }
     };
     loadCartas();
-    const interval = setInterval(loadCartas, 5000);
-    return () => clearInterval(interval);
+    const unsub = subscribeToTable(
+      `cartas:${sessionId}`,
+      'cartas_changed',
+      loadCartas
+    );
+    return () => unsub();
   }, [pestanaActiva, filterMode]);
 
   const uploadCarta = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
-      });
-
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf' });
       if (!result.canceled && result.assets && result.assets[0]) {
         setPendingUpload({ uri: result.assets[0].uri, name: result.assets[0].name });
-        setFechaEscrituraTemp('');
-        setDescripcionTemp('');
-        setTituloCartaTemp('');
-        setFechaModalOpen(true);
+        setFechaEscrituraTemp(''); setDescripcionTemp(''); setTituloCartaTemp(''); setFechaModalOpen(true);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
@@ -108,99 +75,35 @@ export default function CartasScreen() {
 
   const confirmarUpload = async () => {
     if (!pendingUpload) return;
-
-    if (!tituloCartaTemp.trim()) {
-      Alert.alert('Error', 'Por favor ingresa un título para la carta');
-      return;
-    }
-    if (!fechaEscrituraTemp.trim()) {
-      Alert.alert('Error', 'Por favor ingresa la fecha de escritura');
-      return;
-    }
-    if (!descripcionTemp.trim()) {
-      Alert.alert('Error', 'Por favor ingresa una descripción');
-      return;
-    }
-
-    setFechaModalOpen(false);
-    setUploading(true);
-
+    if (!tituloCartaTemp.trim()) { Alert.alert('Error', 'Por favor ingresa un título para la carta'); return; }
+    if (!fechaEscrituraTemp.trim()) { Alert.alert('Error', 'Por favor ingresa la fecha de escritura'); return; }
+    if (!descripcionTemp.trim()) { Alert.alert('Error', 'Por favor ingresa una descripción'); return; }
+    setFechaModalOpen(false); setUploading(true);
     const timestamp = Date.now();
     const extension = pendingUpload.name.split('.').pop()?.toLowerCase() || 'pdf';
     const path = `cartas/${pestanaActiva}/${timestamp}.${extension}`;
-
     try {
       const url = await uploadFile(pendingUpload.uri, path);
-      const titulo = tituloCartaTemp.trim();
-
-      await insforge.database.from('cartas').insert({
-        titulo,
-        url,
-        path,
-        remitente: pestanaActiva,
-        fecha: new Date().toLocaleDateString('es-MX'),
-        fecha_escritura: fechaEscrituraTemp,
-        description: descripcionTemp.trim(),
-        favorita: false,
-        created_at: new Date().toISOString(),
-        session_id: useAppStore.getState().sessionId,
-        user_id: useAppStore.getState().user?.id,
-      });
-
+      await getClient().database.from('cartas').insert({ titulo: tituloCartaTemp.trim(), url, path, remitente: pestanaActiva, fecha: new Date().toLocaleDateString('es-MX'), fecha_escritura: fechaEscrituraTemp, description: descripcionTemp.trim(), favorita: false, created_at: new Date().toISOString(), session_id: useAppStore.getState().sessionId, user_id: useAppStore.getState().user?.id });
+      const state = useAppStore.getState();
+      if (state.sessionId) {
+        publishTableEvent(`cartas:${state.sessionId}`, 'cartas_changed');
+        if (state.user) {
+          await createNotification(state.sessionId, state.user.id, state.user.nombre, 'carta', 'Nueva carta', `${state.user.nombre} escribió una carta: ${tituloCartaTemp.trim()}`);
+        }
+      }
       Alert.alert('Éxito', 'Carta subida correctamente');
-    } catch (uploadError) {
-      const errorMessage = uploadError instanceof Error ? uploadError.message : 'Error desconocido';
-      Alert.alert('Error de subida', `No se pudo subir el archivo. Detalles: ${errorMessage}`);
-      console.error('Upload error:', uploadError);
-    } finally {
-      setUploading(false);
-      setPendingUpload(null);
-      setFechaEscrituraTemp('');
-      setDescripcionTemp('');
-      setTituloCartaTemp('');
-    }
+    } catch (uploadError) { Alert.alert('Error de subida', `No se pudo subir el archivo.`); console.error('Upload error:', uploadError); } finally { setUploading(false); setPendingUpload(null); setFechaEscrituraTemp(''); setDescripcionTemp(''); setTituloCartaTemp(''); }
   };
 
-  const toggleFavorita = async (carta: Carta) => {
-    try {
-      await insforge.database.from('cartas').update({ favorita: !carta.favorita }).eq('id', carta.id);
-    } catch (error) {
-      console.error('Error toggling favorite:', error);
-    }
-  };
-
-  const abrirCarta = (carta: Carta) => {
-    setPreviewCarta(carta);
-  };
-
+  const toggleFavorita = async (carta: Carta) => { try { await getClient().database.from('cartas').update({ favorita: !carta.favorita }).eq('id', carta.id); const sid = useAppStore.getState().sessionId; if (sid) publishTableEvent(`cartas:${sid}`, 'cartas_changed'); } catch (error) { console.error('Error toggling favorite:', error); } };
+  const abrirCarta = (carta: Carta) => setPreviewCarta(carta);
   const eliminarCarta = async (carta: Carta) => {
-    Alert.alert(
-      'Eliminar Carta',
-      '¿Estás seguro que deseas eliminar esta carta?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteFile(carta.path);
-              await insforge.database.from('cartas').delete().eq('id', carta.id);
-            } catch (error) {
-              Alert.alert('Error', 'No se pudo eliminar la carta');
-              console.error('Error deleting carta:', error);
-            }
-          }
-        },
-      ]
-    );
+    Alert.alert('Eliminar Carta', '¿Estás seguro que deseas eliminar esta carta?', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: async () => { try { await deleteFile(carta.path); await getClient().database.from('cartas').delete().eq('id', carta.id); const sid = useAppStore.getState().sessionId; if (sid) publishTableEvent(`cartas:${sid}`, 'cartas_changed'); } catch (error) { Alert.alert('Error', 'No se pudo eliminar la carta'); } } }]);
   };
 
   const renderRightActions = (carta: Carta) => (
-    <TouchableOpacity
-      style={styles.deleteButton}
-      onPress={() => eliminarCarta(carta)}
-    >
+    <TouchableOpacity style={[styles.deleteButton, { backgroundColor: theme.error }]} onPress={() => eliminarCarta(carta)}>
       <Text style={styles.deleteButtonText}>🗑️</Text>
     </TouchableOpacity>
   );
@@ -227,12 +130,10 @@ export default function CartasScreen() {
         </View>
         <View style={styles.tarjetaRight}>
           <TouchableOpacity style={styles.starButton} onPress={() => toggleFavorita(carta)}>
-            <Text style={[styles.estrella, carta.favorita ? styles.estrellaActiva : styles.estrellaInactiva]}>
-              {carta.favorita ? '★' : '☆'}
-            </Text>
+            <Text style={[styles.estrella, { color: carta.favorita ? theme.warning : theme.textTertiary }]}>{carta.favorita ? '★' : '☆'}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setCartaOptionsId(cartaOptionsId === carta.id ? null : carta.id)}>
-            <Text style={styles.moreOptions}>⋮</Text>
+            <Text style={[styles.moreOptions, { color: theme.textTertiary }]}>⋮</Text>
           </TouchableOpacity>
           {cartaOptionsId === carta.id && (
             <Pressable style={[styles.optionsMenuContainer, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
@@ -260,8 +161,7 @@ export default function CartasScreen() {
         </View>
       </TouchableOpacity>
     </Swipeable>
-    );
-  };
+  );
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -333,24 +233,19 @@ export default function CartasScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        style={styles.lista}
-        contentContainerStyle={styles.listaContent}
-        showsVerticalScrollIndicator={false}
-        onScrollBeginDrag={() => setCartaOptionsId(null)}
-      >
+      <ScrollView style={styles.lista} contentContainerStyle={styles.listaContent} showsVerticalScrollIndicator={false} onScrollBeginDrag={() => setCartaOptionsId(null)}>
         {cartas.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Sin cartas</Text>
-            <Text style={styles.emptySubtext}>Toca + para subir una carta</Text>
+            <Text style={[styles.emptyText, { color: theme.textTertiary }]}>Sin cartas</Text>
+            <Text style={[styles.emptySubtext, { color: theme.textTertiary }]}>Toca + para subir una carta</Text>
           </View>
         ) : (
-          cartas.map((carta, index) => renderTarjeta(carta, index))
+          cartas.map((carta) => renderTarjeta(carta))
         )}
       </ScrollView>
 
-      <TouchableOpacity style={styles.floatingButton} onPress={uploadCarta}>
-        <Text style={styles.floatingButtonText}>+</Text>
+      <TouchableOpacity style={[styles.floatingButton, { backgroundColor: theme.primary }]} onPress={uploadCarta}>
+        <Text style={[styles.floatingButtonText, { color: theme.text }]}>+</Text>
       </TouchableOpacity>
 
       <Modal
@@ -389,11 +284,11 @@ export default function CartasScreen() {
               numberOfLines={4}
             />
             <View style={styles.modalButtons}>
-              <Pressable style={styles.cancelButton} onPress={() => { setFechaModalOpen(false); setPendingUpload(null); setTituloCartaTemp(''); }}>
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              <Pressable style={[styles.cancelButton, { borderColor: theme.primary }]} onPress={() => { setFechaModalOpen(false); setPendingUpload(null); setTituloCartaTemp(''); }}>
+                <Text style={[styles.cancelButtonText, { color: theme.primary }]}>Cancelar</Text>
               </Pressable>
-              <Pressable style={styles.saveButton} onPress={confirmarUpload}>
-                <Text style={styles.saveButtonText}>Subir</Text>
+              <Pressable style={[styles.saveButton, { backgroundColor: theme.primary }]} onPress={confirmarUpload}>
+                <Text style={[styles.saveButtonText, { color: theme.text }]}>Subir</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -417,95 +312,50 @@ export default function CartasScreen() {
               placeholderTextColor="#8E8E93"
             />
             <View style={styles.modalButtons}>
-              <Pressable style={styles.cancelButton} onPress={() => setEditingCartaId(null)}>
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              <Pressable style={[styles.cancelButton, { borderColor: theme.primary }]} onPress={() => setEditingCartaId(null)}>
+                <Text style={[styles.cancelButtonText, { color: theme.primary }]}>Cancelar</Text>
               </Pressable>
-              <Pressable
-                style={styles.saveButton}
-                onPress={async () => {
-                  if (editingCartaId) {
-                    try {
-                      await insforge.database.from('cartas').update({ titulo: editingTitulo }).eq('id', editingCartaId);
-                      setEditingCartaId(null);
-                    } catch (error) {
-                      console.error('Error updating titulo:', error);
-                    }
-                  }
-                }}
-              >
-                <Text style={styles.saveButtonText}>Guardar</Text>
+              <Pressable style={[styles.saveButton, { backgroundColor: theme.primary }]} onPress={async () => { if (editingCartaId) { try { await getClient().database.from('cartas').update({ titulo: editingTitulo }).eq('id', editingCartaId); setEditingCartaId(null); } catch (error) { console.error('Error updating titulo:', error); } } }}>
+                <Text style={[styles.saveButtonText, { color: theme.text }]}>Guardar</Text>
               </Pressable>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      <Modal
-        visible={previewCarta !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPreviewCarta(null)}
-      >
-        <View style={styles.romanticoOverlay}>
-          <View style={styles.romanticoTarjeta}>
-            <TouchableOpacity
-              style={styles.romanticoCerrar}
-              onPress={() => setPreviewCarta(null)}
-            >
-              <Text style={styles.romanticoCerrarTexto}>✕</Text>
+      <Modal visible={previewCarta !== null} transparent animationType="fade" onRequestClose={() => setPreviewCarta(null)}>
+        <View style={[styles.romanticoOverlay, { backgroundColor: `${theme.shadow}80` }]}>
+          <View style={[styles.romanticoTarjeta, { backgroundColor: theme.surface }]}>
+            <TouchableOpacity style={styles.romanticoCerrar} onPress={() => setPreviewCarta(null)}>
+              <Text style={[styles.romanticoCerrarTexto, { color: theme.textSecondary }]}>✕</Text>
             </TouchableOpacity>
 
             <View style={styles.romanticoHeader}>
               <Text style={styles.romanticoIcono}>📄</Text>
-              <Text style={styles.romanticoTitulo} numberOfLines={2}>
-                {previewCarta?.titulo}
-              </Text>
-              <Text style={styles.romanticoFecha}>
-                De {previewCarta?.remitente} • {previewCarta?.fecha_escritura || previewCarta?.fecha}
-              </Text>
+              <Text style={[styles.romanticoTitulo, { color: theme.text }]} numberOfLines={2}>{previewCarta?.titulo}</Text>
+              <Text style={[styles.romanticoFecha, { color: theme.textSecondary }]}>De {previewCarta?.remitente} • {previewCarta?.fecha_escritura || previewCarta?.fecha}</Text>
             </View>
 
-            <View style={styles.romanticoDivider} />
+            <View style={[styles.romanticoDivider, { backgroundColor: theme.border }]} />
 
             <View style={styles.romanticoVisorContainer}>
-              <Text style={styles.romanticoEtiqueta}>Vista previa de la carta:</Text>
+              <Text style={[styles.romanticoEtiqueta, { color: theme.text }]}>Vista previa de la carta:</Text>
               {previewCarta?.url?.toLowerCase().includes('.pdf') ? (
-                <WebView
-                  source={{ uri: `https://docs.google.com/viewer?url=${encodeURIComponent(previewCarta?.url || '')}&embedded=true` }}
-                  style={{ flex: 1, backgroundColor: 'transparent' }}
-                  originWhitelist={['*']}
-                  javaScriptEnabled={true}
-                  scalesPageToFit={true}
-                  scrollEnabled={true}
-                  bounces={true}
-                  startInLoadingState={true}
-                />
+                <WebView source={{ uri: `https://docs.google.com/viewer?url=${encodeURIComponent(previewCarta?.url || '')}&embedded=true` }} style={{ flex: 1, backgroundColor: 'transparent' }} originWhitelist={['*']} javaScriptEnabled={true} scalesPageToFit={true} scrollEnabled={true} bounces={true} startInLoadingState={true} />
               ) : (
-                <View style={styles.romanticoImageContainer}>
+                <View style={[styles.romanticoImageContainer, { backgroundColor: theme.input }]}>
                   <Text style={styles.romanticoImageIcon}>📷</Text>
-                  <Text style={styles.romanticoImageText}>Cargando imagen...</Text>
+                  <Text style={[styles.romanticoImageText, { color: theme.textTertiary }]}>Cargando imagen...</Text>
                 </View>
               )}
             </View>
 
-            <View style={styles.romanticoFooter}>
+            <View style={[styles.romanticoFooter, { backgroundColor: theme.surface }]}>
               <ScrollView style={styles.romanticoDescripcion} showsVerticalScrollIndicator={false}>
-                <Text style={styles.romanticoDescripcionTexto}>
-                  {previewCarta?.description || 'Sin descripción'}
-                </Text>
+                <Text style={[styles.romanticoDescripcionTexto, { color: theme.textSecondary }]}>{previewCarta?.description || 'Sin descripción'}</Text>
               </ScrollView>
-              <TouchableOpacity
-                style={styles.romanticoBoton}
-                onPress={() => {
-                  if (previewCarta?.url) {
-                    const urlPDF = previewCarta?.url?.toLowerCase().includes('.pdf')
-                      ? `https://docs.google.com/viewer?url=${encodeURIComponent(previewCarta?.url || '')}&embedded=true`
-                      : previewCarta?.url;
-                    Linking.openURL(urlPDF || '');
-                  }
-                }}
-              >
-                <Text style={styles.romanticoBotonTexto}>📁 Abrir Documento Completo</Text>
+              <TouchableOpacity style={[styles.romanticoBoton, { backgroundColor: theme.primary }]} onPress={() => { if (previewCarta?.url) { const urlPDF = previewCarta?.url?.toLowerCase().includes('.pdf') ? `https://docs.google.com/viewer?url=${encodeURIComponent(previewCarta?.url || '')}&embedded=true` : previewCarta?.url; Linking.openURL(urlPDF || ''); } }}>
+                <Text style={[styles.romanticoBotonTexto, { color: theme.text }]}>📁 Abrir Documento Completo</Text>
               </TouchableOpacity>
             </View>
           </View>

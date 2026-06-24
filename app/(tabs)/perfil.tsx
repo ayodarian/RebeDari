@@ -16,6 +16,10 @@ export default function ProfileScreen() {
     router.replace('/(auth)');
   };
 
+  const getInitials = (name: string) => {
+    return name.charAt(0).toUpperCase();
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.content}>
@@ -71,7 +75,33 @@ export default function ProfileScreen() {
           <Text style={[styles.logoutButtonText, { color: colors.primary }]}>Cerrar Sesión</Text>
         </Pressable>
       </View>
-    </View>
+
+      <View style={[styles.section, { backgroundColor: theme.surface }]}>
+        <Text style={[styles.sectionTitle, { color: theme.primary }]}>Apariencia</Text>
+        <View style={styles.themeToggleRow}>
+          <View style={styles.themeToggleInfo}>
+            <Text style={[styles.themeToggleLabel, { color: theme.text }]}>Modo oscuro</Text>
+            <Text style={[styles.themeToggleDescription, { color: theme.textSecondary }]}>
+              {isDark ? 'Activado' : 'Desactivado'}
+            </Text>
+          </View>
+          <Switch
+            value={isDark}
+            onValueChange={toggleTheme}
+            trackColor={{ false: theme.border, true: theme.primaryLight }}
+            thumbColor={isDark ? theme.primary : '#FFFFFF'}
+          />
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: theme.surface }]}>
+        <Pressable style={[styles.logoutButton, { backgroundColor: theme.error }]} onPress={handleLogout}>
+          <Text style={[styles.logoutButtonText, { color: theme.text }]}>Cerrar sesión</Text>
+        </Pressable>
+      </View>
+
+      <BackupPanel />
+    </ScrollView>
   );
 }
 
@@ -80,9 +110,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    flex: 1,
     paddingHorizontal: 20,
     paddingTop: 20,
+    paddingBottom: 40,
   },
   profileHeader: {
     alignItems: 'center',
@@ -124,7 +154,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 4,
   },
-  value: {
+  infoValue: {
     fontSize: 16,
     fontWeight: '500',
   },

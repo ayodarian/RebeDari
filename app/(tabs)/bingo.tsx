@@ -2,8 +2,7 @@ import { View, Text, StyleSheet, Pressable, Modal, TextInput, Alert, ScrollView,
 import { useState, useEffect, useRef } from 'react';
 import { Dimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import insforge from '../../lib/insforge';
-import { COLORS } from '../../src/styles/brand';
+import { getClient } from '../../lib/insforge';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { useToast } from '../components/Toast';
 import { useAppStore } from '../../store/index';
@@ -19,13 +18,13 @@ interface Casilla {
   titulo: string;
   descripcion: string;
   realizada: boolean;
-  fechaRealizado?: string;
-  createdBy: string;
-  createdByName: string;
-  createdAt: number;
-  updatedAt?: number;
-  updatedBy?: string;
-  updatedByName?: string;
+  fecha_realizado?: string;
+  created_by: string;
+  created_by_name: string;
+  created_at: number;
+  updated_at?: number;
+  updated_by?: string;
+  updated_by_name?: string;
 }
 
 const getColorForUid = (uid: string): string => {
@@ -49,6 +48,7 @@ export default function BingoScreen() {
   const [currentUser, setCurrentUser] = useState<{ uid: string; name: string }>({ uid: 'anonymous', name: 'Anónimo' });
   const currentUid = currentUser.uid;
   const currentName = currentUser.name;
+  const { theme } = useTheme();
 
   const [casillas, setCasillas] = useState<Casilla[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -73,7 +73,7 @@ export default function BingoScreen() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const { data } = await insforge.auth.getCurrentUser();
+        const { data } = await getClient().auth.getCurrentUser();
         if (data?.user) {
           const name = data.user.profile?.name || (data.user.email ? data.user.email.split('@')[0] : null) || 'Alguien';
           setCurrentUser({ uid: data.user.id, name });
@@ -90,7 +90,7 @@ export default function BingoScreen() {
       const sessionId = useAppStore.getState().sessionId;
       if (!sessionId) return;
       try {
-        const { data: flag } = await insforge.database
+        const { data: flag } = await getClient().database
           .from('bingo_meta')
           .select('*')
           .eq('id', 'wiped')
@@ -98,8 +98,8 @@ export default function BingoScreen() {
           .single();
 
         if (!flag) {
-          await insforge.database.from('bingo_meta').insert({ id: 'wiped', wiped: true, at: Date.now(), session_id: sessionId });
-          await insforge.database.from('bingo_cells').delete().neq('id', 0);
+          await getClient().database.from('bingo_meta').insert({ id: 'wiped', wiped: true, at: Date.now(), session_id: sessionId });
+          await getClient().database.from('bingo_cells').delete().neq('id', 0);
         }
       } catch (e) {
         console.warn('Bingo: error en wipe inicial', e);
@@ -108,7 +108,7 @@ export default function BingoScreen() {
 
     const loadCells = async () => {
       try {
-        const { data } = await insforge.database
+        const { data } = await getClient().database
           .from('bingo_cells')
           .select('*')
           .order('created_at', { ascending: true });
@@ -127,8 +127,15 @@ export default function BingoScreen() {
       await loadCells();
     };
     init();
-    const interval = setInterval(loadCells, 5000);
-    return () => clearInterval(interval);
+    const sessionId = useAppStore.getState().sessionId;
+    if (sessionId) {
+      const unsub = subscribeToTable(
+        `bingo:${sessionId}`,
+        'bingo_changed',
+        loadCells
+      );
+      return () => unsub();
+    }
   }, []);
 
   useEffect(() => {
@@ -140,7 +147,7 @@ export default function BingoScreen() {
 
     const newIds: number[] = [];
     casillas.forEach(c => {
-      if (!prevIdsRef.current.has(c.id) && c.createdBy && c.createdBy !== currentUid) {
+      if (!prevIdsRef.current.has(c.id) && c.created_by && c.created_by !== currentUid) {
         newIds.push(c.id);
       }
     });
@@ -168,12 +175,9 @@ export default function BingoScreen() {
 
   const getCasillasFiltradas = (): Casilla[] => {
     switch (filtroActual) {
-      case 'completados':
-        return casillas.filter(c => c.realizada);
-      case 'pendientes':
-        return casillas.filter(c => !c.realizada);
-      default:
-        return casillas;
+      case 'completados': return casillas.filter(c => c.realizada);
+      case 'pendientes': return casillas.filter(c => !c.realizada);
+      default: return casillas;
     }
   };
 
@@ -199,14 +203,21 @@ export default function BingoScreen() {
       titulo: tituloInput.trim(),
       descripcion: descripcionInput.trim(),
       realizada: false,
-      createdBy: currentUid,
-      createdByName: currentName,
-      createdAt: Date.now(),
+      created_by: currentUid,
+      created_by_name: currentName,
+      created_at: Date.now(),
       session_id: useAppStore.getState().sessionId,
     };
     try {
-      const { error } = await insforge.database.from('bingo_cells').insert(nuevaCasilla);
+      const { error } = await getClient().database.from('bingo_cells').insert(nuevaCasilla);
       if (error) throw error;
+      const state = useAppStore.getState();
+      if (state.sessionId) {
+        publishTableEvent(`bingo:${state.sessionId}`, 'bingo_changed');
+        if (state.user) {
+          await createNotification(state.sessionId, state.user.id, state.user.nombre, 'bingo', 'Nuevo plan de bingo', `${state.user.nombre} agregó: ${tituloInput.trim()}`);
+        }
+      }
       cerrarModal();
     } catch (e) {
       console.error('Error creando casilla', e);
@@ -225,7 +236,9 @@ export default function BingoScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await insforge.database.from('bingo_cells').delete().eq('id', id);
+              await getClient().database.from('bingo_cells').delete().eq('id', id);
+              const sid = useAppStore.getState().sessionId;
+              if (sid) publishTableEvent(`bingo:${sid}`, 'bingo_changed');
             } catch (e) {
               console.error('Error eliminando casilla', e);
             }
@@ -237,10 +250,7 @@ export default function BingoScreen() {
   };
 
   const abrirCasilla = (casilla: Casilla) => {
-    if (modoEliminar) {
-      eliminarCasilla(casilla.id);
-      return;
-    }
+    if (modoEliminar) { eliminarCasilla(casilla.id); return; }
     setSelectedCasilla(casilla);
     setTituloInput(casilla.titulo);
     setDescripcionInput(casilla.descripcion);
@@ -260,12 +270,14 @@ export default function BingoScreen() {
     const updates = {
       titulo: tituloInput,
       descripcion: descripcionInput,
-      updatedAt: Date.now(),
-      updatedBy: currentUid,
-      updatedByName: currentName,
+      updated_at: Date.now(),
+      updated_by: currentUid,
+      updated_by_name: currentName,
     };
     try {
-      await insforge.database.from('bingo_cells').update(updates).eq('id', selectedCasilla.id);
+      await getClient().database.from('bingo_cells').update(updates).eq('id', selectedCasilla.id);
+      const sid = useAppStore.getState().sessionId;
+      if (sid) publishTableEvent(`bingo:${sid}`, 'bingo_changed');
     } catch (e) {
       console.error('Error guardando casilla', e);
     }
@@ -276,20 +288,20 @@ export default function BingoScreen() {
     if (!selectedCasilla) return;
     const updates = {
       realizada: true,
-      fechaRealizado: new Date().toLocaleDateString('es-ES'),
-      updatedAt: Date.now(),
-      updatedBy: currentUid,
-      updatedByName: currentName,
+      fecha_realizado: new Date().toLocaleDateString('es-ES'),
+      updated_at: Date.now(),
+      updated_by: currentUid,
+      updated_by_name: currentName,
     };
     try {
-      await insforge.database.from('bingo_cells').update(updates).eq('id', selectedCasilla.id);
+      await getClient().database.from('bingo_cells').update(updates).eq('id', selectedCasilla.id);
+      const sid = useAppStore.getState().sessionId;
+      if (sid) publishTableEvent(`bingo:${sid}`, 'bingo_changed');
     } catch (e) {
       console.error('Error marcando realizado', e);
     }
     const nuevasCompletadas = completadas + 1;
-    if (nuevasCompletadas >= total && total > 0) {
-      setShowConfetti(true);
-    }
+    if (nuevasCompletadas >= total && total > 0) setShowConfetti(true);
     toast.show('Plan marcado como realizado');
     cerrarModal();
   };
@@ -299,20 +311,17 @@ export default function BingoScreen() {
     if (!animValues[key]) animValues[key] = new Animated.Value(1);
     const scale = animValues[key];
     const isHighlighted = highlightedIds.has(casilla.id);
-    const initial = (casilla.createdByName?.[0] ?? '?').toUpperCase();
-    const badgeColor = getColorForUid(casilla.createdBy);
+    const initial = (casilla.created_by_name?.[0] ?? '?').toUpperCase();
+    const badgeColor = getColorForUid(casilla.created_by);
 
     return (
-      <Pressable
-        key={casilla.id}
-        onPress={() => {
-          Animated.sequence([
-            Animated.timing(scale, { toValue: 0.93, duration: 90, useNativeDriver: true }),
-            Animated.timing(scale, { toValue: 1, duration: 90, useNativeDriver: true }),
-          ]).start();
-          abrirCasilla(casilla);
-        }}
-      >
+      <Pressable key={casilla.id} onPress={() => {
+        Animated.sequence([
+          Animated.timing(scale, { toValue: 0.93, duration: 90, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 1, duration: 90, useNativeDriver: true }),
+        ]).start();
+        abrirCasilla(casilla);
+      }}>
         <Animated.View style={[
           styles.casilla,
           { backgroundColor: colors.surface },
@@ -320,9 +329,7 @@ export default function BingoScreen() {
           isHighlighted && styles.casillaHighlighted,
           { transform: [{ scale }] },
         ]}>
-          <Text style={[styles.numeroCasilla, !casilla.realizada && styles.numeroNormal, casilla.realizada && styles.numeroRealizado]}>
-            {index + 1}
-          </Text>
+          <Text style={[styles.numeroCasilla, { color: casilla.realizada ? theme.success : theme.text }]}>{index + 1}</Text>
           <View style={[styles.creadorBadge, { backgroundColor: badgeColor }]}>
             <Text style={styles.creadorBadgeText}>{initial}</Text>
           </View>
@@ -338,16 +345,13 @@ export default function BingoScreen() {
 
   const chunkArray = (arr: Casilla[], size: number): Casilla[][] => {
     const resultado: Casilla[][] = [];
-    for (let i = 0; i < arr.length; i += size) {
-      resultado.push(arr.slice(i, i + size));
-    }
+    for (let i = 0; i < arr.length; i += size) resultado.push(arr.slice(i, i + size));
     return resultado;
   };
 
   const total = casillas.length;
   const completadas = casillas.filter(c => c.realizada).length;
   const porcentaje = total === 0 ? 0 : Math.round((completadas / total) * 100);
-
   const filas = chunkArray(casillasFiltradas, 5);
 
   return (
@@ -364,39 +368,18 @@ export default function BingoScreen() {
       </View>
 
       <View style={styles.filtrosContainer}>
-        <Pressable
-          style={[styles.botonFiltro, filtroActual === 'todos' && styles.botonFiltroActivo]}
-          onPress={() => setFiltroActual('todos')}
-        >
-          <Text style={[styles.botonFiltroTexto, filtroActual === 'todos' && styles.botonFiltroTextoActivo]}>
-            Todos
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.botonFiltro, filtroActual === 'completados' && styles.botonFiltroActivo]}
-          onPress={() => setFiltroActual('completados')}
-        >
-          <Text style={[styles.botonFiltroTexto, filtroActual === 'completados' && styles.botonFiltroTextoActivo]}>
-            Completados
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.botonFiltro, filtroActual === 'pendientes' && styles.botonFiltroActivo]}
-          onPress={() => setFiltroActual('pendientes')}
-        >
-          <Text style={[styles.botonFiltroTexto, filtroActual === 'pendientes' && styles.botonFiltroTextoActivo]}>
-            Pendientes
-          </Text>
-        </Pressable>
+        {(['todos', 'completados', 'pendientes'] as const).map(filtro => (
+          <Pressable key={filtro} style={[styles.botonFiltro, { backgroundColor: filtroActual === filtro ? `${theme.primary}99` : `${theme.primaryLight}4D` }]} onPress={() => setFiltroActual(filtro)}>
+            <Text style={[styles.botonFiltroTexto, { color: filtroActual === filtro ? theme.text : theme.textSecondary }]}>
+              {filtro.charAt(0).toUpperCase() + filtro.slice(1)}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
       <View style={styles.botonesContainer}>
-        <Pressable
-          style={[styles.botonAccion, styles.botonAgregar, cargando && styles.botonAccionDisabled]}
-          onPress={agregarCasilla}
-          disabled={cargando}
-        >
-          <Text style={styles.botonTexto}>+ Agregar</Text>
+        <Pressable style={[styles.botonAccion, { backgroundColor: theme.primaryLight }, cargando && styles.botonAccionDisabled]} onPress={agregarCasilla} disabled={cargando}>
+          <Text style={[styles.botonTexto, { color: theme.text }]}>+ Agregar</Text>
         </Pressable>
         <Pressable
           style={[styles.botonAccion, styles.botonEliminar, { backgroundColor: colors.surfaceSecondary }, modoEliminar && styles.botonEliminarActivo, cargando && styles.botonAccionDisabled]}
@@ -409,9 +392,7 @@ export default function BingoScreen() {
         </Pressable>
       </View>
 
-      {modoEliminar && (
-        <Text style={styles.modoEliminarTexto}>Toca una casilla para eliminar</Text>
-      )}
+      {modoEliminar && <Text style={[styles.modoEliminarTexto, { color: theme.error }]}>Toca una casilla para eliminar</Text>}
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {cargando ? (
@@ -442,9 +423,7 @@ export default function BingoScreen() {
         )}
       </ScrollView>
 
-      {showConfetti && (
-        <ConfettiCannon count={150} origin={{ x: width / 2, y: 0 }} fadeOut onAnimationEnd={() => setShowConfetti(false)} />
-      )}
+      {showConfetti && <ConfettiCannon count={150} origin={{ x: width / 2, y: 0 }} fadeOut onAnimationEnd={() => setShowConfetti(false)} />}
 
       <Modal
         visible={modalVisible}
@@ -460,84 +439,48 @@ export default function BingoScreen() {
                 : (selectedCasilla?.realizada ? 'Ver Plan' : 'Editar Plan')}
             </Text>
 
-            <Text style={styles.labelInput}>Título</Text>
-            <TextInput
-              style={[styles.input, !editando && !modoNuevo && styles.inputDisabled]}
-              value={tituloInput}
-              onChangeText={setTituloInput}
-              editable={editando || modoNuevo}
-              placeholder="Título del plan"
-            />
+            <Text style={[styles.labelInput, { color: theme.textSecondary }]}>Título</Text>
+            <TextInput style={[styles.input, { backgroundColor: theme.input, color: theme.text }, !editando && !modoNuevo && { opacity: 0.6 }]} value={tituloInput} onChangeText={setTituloInput} editable={editando || modoNuevo} placeholder="Título del plan" placeholderTextColor={theme.placeholder} />
 
-            <Text style={styles.labelInput}>Descripción</Text>
-            <TextInput
-              style={[styles.inputDescripcion, !editando && !modoNuevo && styles.inputDisabled]}
-              value={descripcionInput}
-              onChangeText={setDescripcionInput}
-              editable={editando || modoNuevo}
-              multiline
-              numberOfLines={4}
-              placeholder="Descripción del plan"
-            />
+            <Text style={[styles.labelInput, { color: theme.textSecondary }]}>Descripción</Text>
+            <TextInput style={[styles.inputDescripcion, { backgroundColor: theme.input, color: theme.text }, !editando && !modoNuevo && { opacity: 0.6 }]} value={descripcionInput} onChangeText={setDescripcionInput} editable={editando || modoNuevo} multiline numberOfLines={4} placeholder="Descripción del plan" placeholderTextColor={theme.placeholder} />
 
             {selectedCasilla && !modoNuevo && (
-              <View style={styles.modalAttribution}>
-                <Text style={styles.attributionText}>
-                  Creado por {selectedCasilla.createdByName} · {formatDate(selectedCasilla.createdAt)}
-                </Text>
-                {selectedCasilla.updatedAt && (
-                  <Text style={styles.attributionText}>
-                    Editado por {selectedCasilla.updatedByName || selectedCasilla.updatedBy || 'alguien'} · {formatDate(selectedCasilla.updatedAt)}
-                  </Text>
+              <View style={[styles.modalAttribution, { borderTopColor: theme.border }]}>
+                <Text style={[styles.attributionText, { color: theme.textTertiary }]}>Creado por {selectedCasilla.created_by_name} · {formatDate(selectedCasilla.created_at)}</Text>
+                {selectedCasilla.updated_at && (
+                  <Text style={[styles.attributionText, { color: theme.textTertiary }]}>Editado por {selectedCasilla.updated_by_name || selectedCasilla.updated_by || 'alguien'} · {formatDate(selectedCasilla.updated_at)}</Text>
                 )}
               </View>
             )}
 
             {!modoNuevo && (
               <View style={styles.modalBotones}>
-                <Pressable
-                  style={[styles.botonModal, styles.botonEditar]}
-                  onPress={() => setEditando(!editando)}
-                >
-                  <Text style={styles.botonModalTexto}>
-                    {editando ? 'Cancelar' : 'Editar'}
-                  </Text>
+                <Pressable style={[styles.botonModal, { backgroundColor: theme.input }]} onPress={() => setEditando(!editando)}>
+                  <Text style={[styles.botonModalTexto, { color: theme.text }]}>{editando ? 'Cancelar' : 'Editar'}</Text>
                 </Pressable>
-
                 {selectedCasilla && !selectedCasilla.realizada && (
-                  <Pressable
-                    style={[styles.botonModal, styles.botonConfirmar]}
-                    onPress={confirmarRealizado}
-                  >
-                    <Text style={styles.botonModalTexto}>✓ Realizado</Text>
+                  <Pressable style={[styles.botonModal, { backgroundColor: theme.success }]} onPress={confirmarRealizado}>
+                    <Text style={[styles.botonModalTexto, { color: theme.text }]}>✓ Realizado</Text>
                   </Pressable>
                 )}
               </View>
             )}
 
             {modoNuevo && (
-              <Pressable
-                style={styles.botonGuardar}
-                onPress={crearCasilla}
-              >
-                <Text style={styles.botonGuardarTexto}> Guardar Plan</Text>
+              <Pressable style={[styles.botonGuardar, { backgroundColor: theme.primary }]} onPress={crearCasilla}>
+                <Text style={[styles.botonGuardarTexto, { color: theme.text }]}>Guardar Plan</Text>
               </Pressable>
             )}
 
             {!modoNuevo && editando && (
-              <Pressable
-                style={styles.botonGuardar}
-                onPress={guardarCambios}
-              >
-                <Text style={styles.botonGuardarTexto}>Guardar cambios</Text>
+              <Pressable style={[styles.botonGuardar, { backgroundColor: theme.primary }]} onPress={guardarCambios}>
+                <Text style={[styles.botonGuardarTexto, { color: theme.text }]}>Guardar cambios</Text>
               </Pressable>
             )}
 
-            <Pressable
-              style={styles.botonCerrar}
-              onPress={cerrarModal}
-            >
-              <Text style={styles.botonCerrarTexto}>{modoNuevo ? 'Cancelar' : 'Cerrar'}</Text>
+            <Pressable style={styles.botonCerrar} onPress={cerrarModal}>
+              <Text style={[styles.botonCerrarTexto, { color: theme.primary }]}>{modoNuevo ? 'Cancelar' : 'Cerrar'}</Text>
             </Pressable>
           </View>
         </View>
@@ -621,7 +564,7 @@ const styles = StyleSheet.create({
   botonConfirmar: { backgroundColor: '#90EE90' },
   botonModalTexto: { fontSize: 14, fontWeight: '600' },
   botonCerrar: { marginTop: 15, paddingVertical: 12, alignItems: 'center' },
-  botonCerrarTexto: { fontSize: 14, color: '#FF6B9D', fontWeight: '600' },
+  botonCerrarTexto: { fontSize: 14, fontWeight: '600' },
   progressContainer: { paddingHorizontal: 15, marginBottom: 12 },
   progressBarBackground: { height: 10, borderRadius: 10, overflow: 'hidden' },
   progressBarFill: { height: 10, backgroundColor: '#FF6B9D' },

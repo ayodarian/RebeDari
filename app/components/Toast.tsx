@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native';
+import { useTheme } from './ThemeProvider';
 
 type ToastContextType = {
   show: (message: string) => void;
@@ -12,6 +13,7 @@ export const useToast = () => useContext(ToastContext);
 export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
   const [message, setMessage] = useState<string | null>(null);
   const [anim] = useState(new Animated.Value(0));
+  const { theme } = useTheme();
 
   const show = useCallback((msg: string) => {
     setMessage(msg);
@@ -26,9 +28,9 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
     <ToastContext.Provider value={{ show }}>
       {children}
       {message && (
-        <Animated.View style={[styles.container, { transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }], opacity: anim }]}>
+        <Animated.View style={[styles.container, { backgroundColor: `${theme.shadow}CC`, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }], opacity: anim }]}>
           <TouchableOpacity onPress={() => { Animated.timing(anim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setMessage(null)); }}>
-            <Text style={styles.text}>{message}</Text>
+            <Text style={[styles.text, { color: theme.text }]}>{message}</Text>
           </TouchableOpacity>
         </Animated.View>
       )}
@@ -42,14 +44,13 @@ const styles = StyleSheet.create({
     bottom: 30,
     left: 20,
     right: 20,
-    backgroundColor: 'rgba(0,0,0,0.8)',
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  text: { color: '#fff', fontWeight: '600' },
+  text: { fontWeight: '600' },
 });
 
 export default ToastProvider;

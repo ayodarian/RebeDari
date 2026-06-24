@@ -4,7 +4,7 @@ import { useThemeStore } from '../../store/useThemeStore';
 import { getColors } from '../../constants/Colors';
 
 export const COLORS = {
-  primary: '#FF6B9D',
+  primary: '#d4869a',
   background: 'rgba(255, 245, 248, 0.95)',
 };
 
@@ -31,7 +31,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 15,
   },
-  text: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  text: { fontSize: 16, fontWeight: '600' },
 });
 
 export default PrimaryButton;

@@ -41,7 +41,7 @@ if (
         bytes = new Uint8Array(data as unknown as ArrayBuffer);
       }
 
-      const result = await ExpoCrypto.digest(digestAlgo, bytes as any);
+      const result = await ExpoCrypto.digest(digestAlgo, new Uint8Array(bytes));
       return result;
     },
   };

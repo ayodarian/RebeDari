@@ -1,27 +1,25 @@
-import { useEffect, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { useAppStore } from '../store/index';
 import { View, ActivityIndicator } from 'react-native';
 
 export default function Index() {
-  const { isAuthenticated, isLoading, checkAuth } = useAppStore();
-  const [ready, setReady] = useState(false);
+  const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+  const isLoading = useAppStore((s) => s.isLoading);
 
-  useEffect(() => {
-    checkAuth();
-    const timer = setTimeout(() => setReady(true), 500);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, []);
-
-  if (!ready || isLoading) {
-    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255, 245, 248, 0.95)' }}><ActivityIndicator size="large" color="#FF6B9D" /></View>;
+  if (isLoading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(255, 245, 248, 0.95)',
+        }}
+      >
+        <ActivityIndicator size="large" color="#FF6B9D" />
+      </View>
+    );
   }
 
-  if (isAuthenticated) {
-    return <Redirect href="/(tabs)" />;
-  }
-
-  return <Redirect href="/(auth)" />;
+  return <Redirect href={isAuthenticated ? '/(tabs)' : '/(auth)'} />;
 }

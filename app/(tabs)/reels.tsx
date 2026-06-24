@@ -5,9 +5,8 @@ import { VideoPlayer, useVideoPlayer, VideoView } from 'expo-video';
 import Slider from '@react-native-community/slider';
 import * as ImagePicker from 'expo-image-picker';
 import { getInfoAsync } from 'expo-file-system/legacy';
-import insforge from '../../lib/insforge';
+import { getClient } from '../../lib/insforge';
 import { uploadFile, deleteFile } from '../../lib/storage';
-import { COLORS } from '../../src/styles/brand';
 import { useAppStore } from '../../store/index';
 import { useThemeStore } from '../../store/useThemeStore';
 import { getColors } from '../../constants/Colors';
@@ -39,6 +38,7 @@ function VideoListItem({
   setEditingCaption: (caption: string) => void;
   colors: ReturnType<typeof getColors>;
 }) {
+  const { theme } = useTheme();
   const player = useVideoPlayer(item.url);
   
   const [isPaused, setIsPaused] = useState(false);
@@ -50,83 +50,47 @@ function VideoListItem({
   const sliderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const formatTime = (seconds: number) => {
-    if (seconds === null || seconds === undefined || isNaN(seconds)) {
-      return '00:00';
-    }
+    if (seconds === null || seconds === undefined || isNaN(seconds)) return '00:00';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const hideControlsAfterDelay = useCallback(() => {
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-    }
-    hideTimeoutRef.current = setTimeout(() => {
-      setShowControls(false);
-    }, 1000);
+    if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+    hideTimeoutRef.current = setTimeout(() => setShowControls(false), 1000);
   }, []);
 
   const togglePlayPause = useCallback(() => {
-    if (isPaused) {
-      player.play();
-      setIsPaused(false);
-    } else {
-      player.pause();
-      setIsPaused(true);
-    }
+    if (isPaused) { player.play(); setIsPaused(false); }
+    else { player.pause(); setIsPaused(true); }
     setShowControls(true);
     hideControlsAfterDelay();
   }, [isPaused, player, hideControlsAfterDelay]);
 
   const showSliderWithTimeout = useCallback(() => {
     setShowSlider(true);
-    if (sliderTimeoutRef.current) {
-      clearTimeout(sliderTimeoutRef.current);
-    }
-    sliderTimeoutRef.current = setTimeout(() => {
-      setShowSlider(false);
-    }, 1000);
+    if (sliderTimeoutRef.current) clearTimeout(sliderTimeoutRef.current);
+    sliderTimeoutRef.current = setTimeout(() => setShowSlider(false), 1000);
   }, []);
 
   useEffect(() => {
     if (isVisible) {
-      player.loop = true;
-      player.play();
-      setIsPaused(false);
-      setShowControls(false);
-      setShowSlider(false);
+      player.loop = true; player.play(); setIsPaused(false); setShowControls(false); setShowSlider(false);
     } else {
-      player.pause();
-      setShowControls(false);
-      setShowSlider(false);
+      player.pause(); setShowControls(false); setShowSlider(false);
     }
   }, [isVisible, player]);
 
-  
-
   useEffect(() => {
     if (!player) return;
-    
     player.timeUpdateEventInterval = 1;
-    
-    const timer = setTimeout(() => {
-      if (player.duration > 0) {
-        setDuration(player.duration);
-      }
-    }, 300);
-    
+    const timer = setTimeout(() => { if (player.duration > 0) setDuration(player.duration); }, 300);
     const subscription = player.addListener('timeUpdate', (event: any) => {
       setCurrentTime(event.currentTime);
-      if (player.duration > 0) {
-        setDuration(player.duration);
-      }
+      if (player.duration > 0) setDuration(player.duration);
     });
-
-    return () => {
-      clearTimeout(timer);
-      subscription.remove();
-    };
+    return () => { clearTimeout(timer); subscription.remove(); };
   }, [player]);
 
   const getTimeAgo = (dateStr: string) => {
@@ -197,22 +161,11 @@ function VideoListItem({
       </View>
       {isVisible ? (
         <View style={styles.videoWrapper}>
-          <VideoView
-            player={player}
-            style={styles.videoPlayer}
-            contentFit="cover"
-            nativeControls={false}
-          />
-          <Pressable 
-            onPress={togglePlayPause} 
-            style={styles.videoTouchOverlay}
-          />
+          <VideoView player={player} style={styles.videoPlayer} contentFit="cover" nativeControls={false} />
+          <Pressable onPress={togglePlayPause} style={styles.videoTouchOverlay} />
           {showControls && (
             <View style={styles.playPauseOverlay}>
-              <Image 
-                source={require('../../assets/pasue.png')}
-                style={styles.pauseIconImage}
-              />
+              <Image source={require('../../assets/pause.png')} style={styles.pauseIconImage} />
             </View>
           )}
           {showSlider && (
@@ -236,19 +189,16 @@ minimumValue={0}
               </Text>
             </View>
           )}
-          <Pressable 
-            onPress={showSliderWithTimeout}
-            style={styles.sliderZone}
-          />
+          <Pressable onPress={showSliderWithTimeout} style={styles.sliderZone} />
         </View>
       ) : (
-        <View style={styles.videoPlaceholder}>
+        <View style={[styles.videoPlaceholder, { backgroundColor: theme.shadow }]}>
           <Text style={styles.placeholderText}>🎬</Text>
-          <Text style={styles.placeholderSubtext}>Video</Text>
+          <Text style={[styles.placeholderSubtext, { color: theme.textTertiary }]}>Video</Text>
         </View>
       )}
       <View style={styles.videoOverlay}>
-        <Text style={styles.caption}>{item.caption || 'Recuerdos'}</Text>
+        <Text style={[styles.caption, { color: theme.text }]}>{item.caption || 'Recuerdos'}</Text>
       </View>
     </Pressable>
   );
@@ -270,117 +220,59 @@ export default function ReelsScreen() {
   const PAGE_SIZE = 10;
 
   useEffect(() => {
+    const sessionId = useAppStore.getState().sessionId;
+    if (!sessionId) return;
     const loadVideos = async () => {
       try {
-        const { data } = await insforge.database
-          .from('videos')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(PAGE_SIZE);
-        if (data) {
-          setVideos(data as VideoItem[]);
-          setHasMore(data.length === PAGE_SIZE);
-        }
-      } catch (e) {
-        console.error('Error cargando videos', e);
-      }
+        const { data } = await getClient().database.from('videos').select('*').order('created_at', { ascending: false }).limit(PAGE_SIZE);
+        if (data) { setVideos(data as VideoItem[]); setHasMore(data.length === PAGE_SIZE); }
+      } catch (e) { console.error('Error cargando videos', e); }
     };
     loadVideos();
-    const interval = setInterval(loadVideos, 5000);
-    return () => clearInterval(interval);
+    const unsub = subscribeToTable(
+      `videos:${sessionId}`,
+      'videos_changed',
+      loadVideos
+    );
+    return () => unsub();
   }, []);
 
   const pickVideo = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['videos'],
-      allowsEditing: false,
-      quality: ImagePicker.UIImagePickerControllerQualityType.Low,
-      videoMaxDuration: 300,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const videoAsset = result.assets[0];
-      if (videoAsset.duration && videoAsset.duration > 300000) {
-        alert('El video no puede superar los 5 minutos');
-        return;
-      }
-      
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], allowsMultipleSelection: true, selectionLimit: 0, quality: 0.7, videoMaxDuration: 300 });
+    if (!result.canceled && result.assets.length > 0) {
       setUploading(true);
-      const tempUri = videoAsset.uri;
-      
-      let fileSize = 0;
-      try {
-        const fileInfo = await getInfoAsync(tempUri);
-        if (fileInfo.exists && 'size' in fileInfo) {
-          fileSize = (fileInfo as { size: number }).size;
-        }
-      } catch (fileError) {
-        console.warn('No se pudo verificar el tamaño del archivo');
-      }
-
-      if (fileSize > 100 * 1024 * 1024) {
-        alert('El video es demasiado pesado (máx 100MB)');
-        setUploading(false);
-        return;
-      }
-      
       try {
         const timestamp = Date.now();
-        const path = `videos/${timestamp}.mp4`;
-        const url = await uploadFile(tempUri, path);
-        
-        await insforge.database.from('videos').insert({
-          url,
-          path,
-          caption: 'Recuerdos',
-          created_at: new Date().toISOString(),
-          session_id: useAppStore.getState().sessionId,
-          user_id: useAppStore.getState().user?.id,
-        });
-        
-        alert('Video subido correctamente');
-      } catch (error) {
-        alert('Error al subir el video');
-        console.error(error);
-      } finally {
-        setUploading(false);
-      }
+        const totalAssets = result.assets.length;
+        let successCount = 0;
+        for (let i = 0; i < result.assets.length; i++) {
+          const videoAsset = result.assets[i];
+          if (videoAsset.duration && videoAsset.duration > 300000) continue;
+          const tempUri = videoAsset.uri;
+          let fileSize = 0;
+          try { const fileInfo = await getInfoAsync(tempUri); if (fileInfo.exists && 'size' in fileInfo) fileSize = (fileInfo as { size: number }).size; } catch (fileError) { console.warn('No se pudo verificar el tamaño del archivo'); }
+          if (fileSize > 100 * 1024 * 1024) continue;
+          const path = `videos/${timestamp}_${i}.mp4`;
+          const url = await uploadFile(tempUri, path);
+          await getClient().database.from('videos').insert({ url, path, caption: 'Recuerdos', created_at: new Date().toISOString(), session_id: useAppStore.getState().sessionId, user_id: useAppStore.getState().user?.id });
+          successCount++;
+        }
+        const state = useAppStore.getState();
+        if (state.sessionId) {
+          publishTableEvent(`videos:${state.sessionId}`, 'videos_changed');
+          if (state.user) {
+            await createNotification(state.sessionId, state.user.id, state.user.nombre, 'video', 'Nuevo video', `${state.user.nombre} compartió ${successCount} video${successCount > 1 ? 's' : ''}`);
+          }
+        }
+        alert(`${successCount} de ${totalAssets} videos subidos correctamente`);
+      } catch (error) { alert('No se pudieron subir todos los videos'); console.error(error); } finally { setUploading(false); }
     }
   };
 
-  const shuffleVideos = () => {
-    const shuffled = [...videos].sort(() => Math.random() - 0.5);
-    setVideos(shuffled);
-  };
-
+  const shuffleVideos = () => { setVideos([...videos].sort(() => Math.random() - 0.5)); };
   const openActionModal = () => setActionModalVisible(true);
   const closeActionModal = () => setActionModalVisible(false);
-  const handleVideoAction = (action: () => void) => {
-    closeActionModal();
-    action();
-  };
-
-  const deleteVideo = async (video: VideoItem) => {
-    Alert.alert(
-      'Eliminar Video',
-      '¿Estás seguro?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Eliminar', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteFile(video.path);
-              await insforge.database.from('videos').delete().eq('id', video.id);
-            } catch (error) {
-              console.error('Error deleting video:', error);
-            }
-          }
-        },
-      ]
-    );
-  };
+  const handleVideoAction = (action: () => void) => { closeActionModal(); action(); };
 
   const renderVideo = ({ item, index }: { item: VideoItem; index: number }) => (
     <VideoListItem
@@ -407,40 +299,28 @@ export default function ReelsScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {uploading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#FF6B9D" />
-          <Text style={styles.loadingText}>Subiendo video...</Text>
+        <View style={[styles.loadingOverlay, { backgroundColor: `${theme.surface}E6` }]}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.loadingText, { color: theme.primary }]}>Subiendo video...</Text>
         </View>
       )}
       
       <View style={[styles.header, { paddingTop: 5 }]}>
         <Text style={[styles.title, { color: colors.primary }]}>Reels</Text>
       </View>
-      <FlatList
-        data={videos}
-        renderItem={renderVideo}
-        keyExtractor={(item) => String(item.id)}
-        pagingEnabled
-        showsVerticalScrollIndicator={false}
-        snapToInterval={height * 0.6}
-        snapToAlignment="start"
-        decelerationRate="fast"
-        onViewableItemsChanged={handleViewabilityChange}
-        viewabilityConfig={viewabilityConfig}
+      <FlatList data={videos} renderItem={renderVideo} keyExtractor={(item) => String(item.id)} pagingEnabled showsVerticalScrollIndicator={false}
+        snapToInterval={height * 0.6} snapToAlignment="start" decelerationRate="fast"
+        onViewableItemsChanged={handleViewabilityChange} viewabilityConfig={viewabilityConfig}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Sin videos aún</Text>
             <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Toca + para subir un video</Text>
           </View>
         }
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={1}
-        windowSize={3}
-        initialNumToRender={1}
-      />
+        removeClippedSubviews={true} maxToRenderPerBatch={1} windowSize={3} initialNumToRender={1} />
       
-      <TouchableOpacity style={styles.floatingButton} onPress={openActionModal}>
-        <Text style={styles.floatingButtonText}>+</Text>
+      <TouchableOpacity style={[styles.floatingButton, { backgroundColor: theme.primary }]} onPress={openActionModal}>
+        <Text style={[styles.floatingButtonText, { color: theme.text }]}>+</Text>
       </TouchableOpacity>
 
       <Modal
@@ -460,23 +340,15 @@ export default function ReelsScreen() {
               placeholderTextColor="#8E8E93"
             />
             <View style={styles.editModalButtons}>
-              <Pressable style={styles.cancelButton} onPress={() => setEditingVideoId(null)}>
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              <Pressable style={[styles.cancelButton, { borderColor: theme.primary }]} onPress={() => setEditingVideoId(null)}>
+                <Text style={[styles.cancelButtonText, { color: theme.primary }]}>Cancelar</Text>
               </Pressable>
-              <Pressable
-                style={styles.saveButton}
-                onPress={async () => {
-                  if (editingVideoId) {
-                    try {
-                      await insforge.database.from('videos').update({ caption: editingCaption }).eq('id', editingVideoId);
-                      setEditingVideoId(null);
-                    } catch (error) {
-                      console.error('Error updating caption:', error);
-                    }
-                  }
-                }}
-              >
-                <Text style={styles.saveButtonText}>Guardar</Text>
+              <Pressable style={[styles.saveButton, { backgroundColor: theme.primary }]} onPress={async () => {
+                if (editingVideoId) {
+                  try { await getClient().database.from('videos').update({ caption: editingCaption }).eq('id', editingVideoId); setEditingVideoId(null); } catch (error) { console.error('Error updating caption:', error); }
+                }
+              }}>
+                <Text style={[styles.saveButtonText, { color: theme.text }]}>Guardar</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -495,8 +367,8 @@ export default function ReelsScreen() {
             <Pressable style={styles.actionButton} onPress={() => handleVideoAction(pickVideo)}>
               <Text style={styles.actionButtonText}>🎬 Subir video</Text>
             </Pressable>
-            <Pressable style={styles.actionButton} onPress={() => handleVideoAction(shuffleVideos)}>
-              <Text style={styles.actionButtonText}>🔀 Mezclar contenido</Text>
+            <Pressable style={[styles.actionButton, { backgroundColor: theme.primary }]} onPress={() => handleVideoAction(shuffleVideos)}>
+              <Text style={[styles.actionButtonText, { color: theme.text }]}>🔀 Mezclar contenido</Text>
             </Pressable>
             <Pressable style={styles.actionCancelButton} onPress={closeActionModal}>
               <Text style={[styles.actionCancelText, { color: colors.textSecondary }]}>Cancelar</Text>
